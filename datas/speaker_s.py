@@ -686,17 +686,17 @@ speakers_info_s: SpeakerDatabase = {
         "price": "300",
         "amount": "each",
         "shape": "bookshelves",
-        "default_measurement": "eac",
+        "default_measurement": "asr",
         "measurements": {
-            "eac": {
-                "origin": "ErinsAudioCorner",
-                "format": "rew_text_dump",
-                "quality": "medium",
+            "asr": {
+                "origin": "ASR",
+                "format": "klippel",
                 "reviews": {
+                    "asr": "https://www.audiosciencereview.com/forum/index.php?threads/sovox-minimax3-monitor-review.74181/",
                     "eac": "https://www.erinsaudiocorner.com/loudspeakers/sovox_minimax_3m",
                     "yt": "https://youtu.be/mpsg7coXals",
                 },
-                "review_published": "20260921",
+                "review_published": "20261031",
                 "specifications": {
                     "SPL": {
                         "max": 97,
@@ -708,6 +708,12 @@ speakers_info_s: SpeakerDatabase = {
                     },
                     "weight": 4.0,
                 },
+            },
+            "eac": {
+                "origin": "ErinsAudioCorner",
+                "format": "rew_text_dump",
+                "quality": "medium",
+                "review_published": "20260921",
             },
             "vendor": {
                 "origin": "Vendors-Sovox",
