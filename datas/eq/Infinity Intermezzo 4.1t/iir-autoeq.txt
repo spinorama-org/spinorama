@@ -1,0 +1,14 @@
+EQ for Infinity Intermezzo 4.1t computed from Vendors-Infinity data
+Preference Score 7.23 with EQ 7.96
+Generated from http://github.com/spinorama-org/spinorama/blob/develop/scripts/generate_peqs.py v0.26
+Dated: 2024-03-19-16:48:31
+
+Preamp: -0.7 dB
+
+Filter  1: ON PK Fc    37 Hz Gain -3.46 dB Q 2.93
+Filter  2: ON PK Fc    83 Hz Gain -1.47 dB Q 2.83
+Filter  3: ON PK Fc   409 Hz Gain +0.84 dB Q 1.43
+Filter  4: ON PK Fc  2491 Hz Gain +1.41 dB Q 1.94
+Filter  5: ON PK Fc  2670 Hz Gain -1.27 dB Q 0.58
+Filter  6: ON PK Fc  4654 Hz Gain -1.30 dB Q 1.93
+Filter  7: ON PK Fc  9319 Hz Gain -0.57 dB Q 1.68

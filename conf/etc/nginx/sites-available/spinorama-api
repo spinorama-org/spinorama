@@ -1,0 +1,36 @@
+upstream app_server {
+    server unix:/home/spin/run/gunicorn.sock fail_timeout=0;
+}
+
+server {
+    include /etc/nginx/snippets/deny-repository-metadata.conf;
+    listen 443 ssl;
+    server_name api.spinorama.org;
+    keepalive_timeout 5;
+    client_max_body_size 4G;
+
+    # All requests, including downloads, go through FastAPI's key check.
+    # /docs, /redoc and /openapi.json are public in FastAPI.
+    location / {
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Authorization $http_authorization;
+        proxy_cache off;
+        proxy_redirect off;
+        proxy_pass http://app_server;
+    }
+
+    include /etc/nginx/conf.d/headers-strict.conf;
+    ssl_certificate /etc/letsencrypt/live/api.spinorama.org-0001/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/api.spinorama.org-0001/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+}
+
+server {
+    include /etc/nginx/snippets/deny-repository-metadata.conf;
+    listen 80;
+    server_name api.spinorama.org;
+    return 301 https://api.spinorama.org$request_uri;
+}

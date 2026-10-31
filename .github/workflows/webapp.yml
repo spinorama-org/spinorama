@@ -1,0 +1,20 @@
+name: Spinorama Javascript
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+    - uses: actions/checkout@v6
+    - uses: actions/setup-node@v6
+      with:
+        node-version: 25
+        cache: 'npm'
+    - run: npm install
+    - run: npm ci
+    - run: npm test

@@ -1,0 +1,14 @@
+EQ for RCF ART 715-A MK4 computed from Vendors-RCF data
+Preference Score 3.34 with EQ 4.59
+Generated from http://github.com/spinorama-org/spinorama/blob/develop/scripts/generate_peqs.py v0.26
+Dated: 2024-03-19-16:22:09
+
+Preamp: -2.2 dB
+
+Filter  1: ON PK Fc    54 Hz Gain +2.99 dB Q 2.32
+Filter  2: ON PK Fc   105 Hz Gain -3.38 dB Q 1.30
+Filter  3: ON PK Fc   310 Hz Gain -1.80 dB Q 1.13
+Filter  4: ON PK Fc  1244 Hz Gain +2.16 dB Q 3.00
+Filter  5: ON PK Fc  3177 Hz Gain -0.73 dB Q 2.98
+Filter  6: ON PK Fc 10341 Hz Gain -4.65 dB Q 1.22
+Filter  7: ON PK Fc 13652 Hz Gain -5.64 dB Q 2.49

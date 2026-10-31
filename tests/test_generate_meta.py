@@ -1,0 +1,220 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# Regression tests for scripts/generate_meta.py
+
+import json
+import os
+import sys
+import tempfile
+import unittest
+from unittest.mock import patch
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
+
+from datas import Measurement
+from spinorama.loaders.klippel import parse_graph_freq_klippel
+from spinorama.measurements import Measurements
+from spinorama.compute.scores import speaker_pref_rating
+from spinorama.misc import graph_melt
+
+import generate_meta
+
+
+class TestGenerateMetaAddMeasurement(unittest.TestCase):
+    """Tests for add_measurement handling of partial (truncated) measurements."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls._measurements = cls._load_neumann_kh80_measurements()
+
+    @staticmethod
+    def _load_neumann_kh80_measurements():
+        paths = {
+            "cea2034": "datas/measurements/Neumann KH 80/asr-v3-20200711/CEA2034.txt",
+            "eir": "datas/measurements/Neumann KH 80/asr-v3-20200711/Estimated In-Room Response.txt",
+            "h_spl": "datas/measurements/Neumann KH 80/asr-v3-20200711/SPL Horizontal.txt",
+            "v_spl": "datas/measurements/Neumann KH 80/asr-v3-20200711/SPL Vertical.txt",
+        }
+        frames = {}
+        for key, path in paths.items():
+            status, (_, df) = parse_graph_freq_klippel(path)
+            if not status:
+                msg = f"Failed to load {path}"
+                raise RuntimeError(msg)
+            frames[key] = df
+        return Measurements(
+            cea2034=frames["cea2034"],
+            eir=frames["eir"],
+            h_spl=frames["h_spl"],
+            v_spl=frames["v_spl"],
+        )
+
+    @staticmethod
+    def _speaker_info(min_valid_freq=None):
+        measurement = Measurement(
+            {
+                "origin": "ASR",
+                "format": "klippel",
+            }
+        )
+        if min_valid_freq is not None:
+            measurement["data_acquisition"] = {"min_valid_freq": min_valid_freq}
+        return {
+            "brand": "Test",
+            "model": "Speaker",
+            "type": "active",
+            "default_measurement": "asr",
+            "measurements": {"asr": measurement},
+        }
+
+    def test_full_range_measurement_computes_scores(self):
+        speakers_info = {"Test Speaker Full": self._speaker_info()}
+        with patch.object(generate_meta, "speakers_info", speakers_info):
+            result = generate_meta.add_measurement(
+                "Test Speaker Full", "ASR", "asr", self._measurements
+            )
+        self.assertIn("pref_rating", result)
+        self.assertIn("scaled_pref_rating", result)
+        self.assertIn("estimates", result)
+
+    def test_explicit_20hz_computes_scores(self):
+        speakers_info = {"Test Speaker 20Hz": self._speaker_info(min_valid_freq=20)}
+        with patch.object(generate_meta, "speakers_info", speakers_info):
+            result = generate_meta.add_measurement(
+                "Test Speaker 20Hz", "ASR", "asr", self._measurements
+            )
+        self.assertIn("pref_rating", result)
+        self.assertIn("scaled_pref_rating", result)
+        self.assertIn("estimates", result)
+
+    def test_partial_measurement_keeps_estimates_skips_pref_rating(self):
+        speakers_info = {"Test Speaker Partial": self._speaker_info(min_valid_freq=200)}
+        with patch.object(generate_meta, "speakers_info", speakers_info):
+            result = generate_meta.add_measurement(
+                "Test Speaker Partial", "ASR", "asr", self._measurements
+            )
+        self.assertIn("estimates", result)
+        self.assertNotIn("pref_rating", result)
+
+    def test_princeton_measurement_keeps_estimates_skips_pref_rating(self):
+        speaker_info = self._speaker_info()
+        speaker_info["measurements"]["asr"]["origin"] = "Princeton"
+        speakers_info = {"Test Speaker Princeton": speaker_info}
+        with patch.object(generate_meta, "speakers_info", speakers_info):
+            result = generate_meta.add_measurement(
+                "Test Speaker Princeton", "Princeton", "asr", self._measurements
+            )
+        self.assertIn("estimates", result)
+        self.assertNotIn("pref_rating", result)
+
+    def test_band_limited_cea2034_cannot_be_scored(self):
+        cea2034 = graph_melt(self._measurements.cea2034)
+        eir = graph_melt(self._measurements.eir)
+        cea2034 = cea2034.loc[cea2034.Freq >= 500]
+        eir = eir.loc[eir.Freq >= 500]
+
+        self.assertEqual({}, speaker_pref_rating(cea2034, eir, rounded=True))
+
+    def test_partial_eq_version_keeps_estimates_skips_pref_rating(self):
+        """The _eq variant looks up the base measurement's data_acquisition."""
+        speakers_info = {"Test Speaker Partial EQ": self._speaker_info(min_valid_freq=200)}
+        with patch.object(generate_meta, "speakers_info", speakers_info):
+            result = generate_meta.add_measurement(
+                "Test Speaker Partial EQ", "ASR", "asr_eq", self._measurements
+            )
+        self.assertIn("estimates_eq", result)
+        self.assertNotIn("pref_rating_eq", result)
+
+    def test_undeclared_band_limited_measurement_skips_pref_rating(self):
+        """Curves starting above 40 Hz without a declared min_valid_freq.
+
+        speaker_pref_rating answers {} (not None) for such input; the rating
+        must be skipped instead of raising KeyError: 'pref_score'.
+        """
+        frames = self._measurements
+        band_limited = Measurements(
+            cea2034=frames.cea2034.loc[frames.cea2034.Freq >= 48],
+            eir=frames.eir.loc[frames.eir.Freq >= 48],
+            h_spl=frames.h_spl,
+            v_spl=frames.v_spl,
+        )
+        speakers_info = {"Test Speaker BandLimited": self._speaker_info()}
+        with patch.object(generate_meta, "speakers_info", speakers_info):
+            result = generate_meta.add_measurement(
+                "Test Speaker BandLimited", "ASR", "asr", band_limited
+            )
+        self.assertNotIn("pref_rating", result)
+        self.assertNotIn("scaled_pref_rating", result)
+
+
+class TestAudioholicsMetadata(unittest.TestCase):
+    """Regression test ensuring Audioholics measurements are flagged as partial."""
+
+    def test_all_audioholics_measurements_have_min_valid_freq(self):
+        from datas.speaker import speakers_info
+
+        audioholics_keys = {
+            "misc-audioholics",
+            "misc-audioholics-vertical",
+            "misc-audioholics-horizontal",
+        }
+        missing = []
+        for speaker_name, speaker_data in speakers_info.items():
+            for version, measurement in speaker_data.get("measurements", {}).items():
+                if version not in audioholics_keys:
+                    continue
+                data_acquisition = measurement.get("data_acquisition", {})
+                min_valid_freq = data_acquisition.get("min_valid_freq")
+                if min_valid_freq != 200:
+                    missing.append((speaker_name, version, min_valid_freq))
+        self.assertEqual(
+            missing,
+            [],
+            f"Audioholics measurements missing min_valid_freq=200: {missing}",
+        )
+
+
+class TestMetadataOutputCaching(unittest.TestCase):
+    def test_cleanup_removes_only_stale_metadata_slices(self):
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            root = os.path.join(temporary_dir, "metadata.json")
+            stale = os.path.join(temporary_dir, "metadata-2020.json")
+            unrelated = os.path.join(temporary_dir, "headphone_metadata.json")
+            for filename in (root, stale, unrelated):
+                with open(filename, "w", encoding="utf-8") as output:
+                    output.write("{}")
+
+            generate_meta.cleanup_metadata_outputs({root}, [root])
+
+            self.assertTrue(os.path.exists(root))
+            self.assertFalse(os.path.exists(stale))
+            self.assertTrue(os.path.exists(unrelated))
+
+    def test_manifest_tracks_compressed_and_headphone_artifacts(self):
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            root = os.path.join(temporary_dir, "json")
+            os.makedirs(root)
+            metadata = os.path.join(root, "metadata-abcde.json")
+            compressed = f"{metadata}.zip"
+            headphones = os.path.join(temporary_dir, "headphone_metadata.json")
+            headphone_eq = os.path.join(temporary_dir, "headphone_eqdata.json")
+            for filename in (metadata, compressed, headphones, headphone_eq):
+                with open(filename, "w", encoding="utf-8") as output:
+                    output.write("{}")
+
+            manifest = generate_meta.Path(temporary_dir) / "metadata-manifest.json"
+            with (
+                patch.object(generate_meta, "METADATA_CACHE_MANIFEST", manifest),
+                patch.object(generate_meta, "metadata_input_fingerprint", return_value="current"),
+                patch.object(generate_meta.cpaths, "CPATH_DIST_JSON", root),
+                patch.object(generate_meta.cpaths, "CPATH_DIST_HEADPHONE_METADATA_JSON", headphones),
+                patch.object(generate_meta.cpaths, "CPATH_DIST_HEADPHONE_EQDATA_JSON", headphone_eq),
+            ):
+                generate_meta.save_metadata_cache_manifest()
+
+            outputs = json.loads(manifest.read_text(encoding="utf-8"))["outputs"]
+            self.assertEqual(set(outputs), {metadata, compressed, headphones, headphone_eq})
+
+
+if __name__ == "__main__":
+    unittest.main()

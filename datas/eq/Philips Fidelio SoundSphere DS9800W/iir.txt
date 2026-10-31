@@ -1,0 +1,14 @@
+EQ for Philips Fidelio SoundSphere DS9800W computed from SpeakerLab data
+Preference Score 4.63 with EQ 6.51
+Generated from https://github.com/spinorama-org/spinorama/blob/develop/scripts/generate_peqs.py v0.28
+Dated: 2026-10-29-07:29:46
+
+Preamp: -2.8 dB
+
+Filter  1: ON PK Fc    65 Hz Gain +2.99 dB Q 0.71
+Filter  2: ON PK Fc   113 Hz Gain -3.75 dB Q 1.35
+Filter  3: ON PK Fc   487 Hz Gain +2.06 dB Q 1.74
+Filter  4: ON PK Fc   879 Hz Gain -2.14 dB Q 1.74
+Filter  5: ON PK Fc  1288 Hz Gain -3.62 dB Q 2.99
+Filter  6: ON PK Fc  4194 Hz Gain +1.63 dB Q 0.45
+Filter  7: ON PK Fc 14633 Hz Gain +2.53 dB Q 1.14

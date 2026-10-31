@@ -1,0 +1,14 @@
+EQ for Behringer B2031A computed from Misc data
+Preference Score 5.49 with EQ 6.98
+Generated from http://github.com/spinorama-org/spinorama/blob/develop/scripts/generate_peqs.py v0.26
+Dated: 2024-03-19-16:16:44
+
+Preamp: -1.3 dB
+
+Filter  1: ON PK Fc   102 Hz Gain -3.02 dB Q 2.02
+Filter  2: ON PK Fc   144 Hz Gain -1.21 dB Q 2.63
+Filter  3: ON PK Fc   252 Hz Gain -1.77 dB Q 2.50
+Filter  4: ON PK Fc   560 Hz Gain -1.06 dB Q 2.99
+Filter  5: ON PK Fc   849 Hz Gain -1.70 dB Q 1.36
+Filter  6: ON PK Fc  2094 Hz Gain +1.50 dB Q 2.23
+Filter  7: ON PK Fc 16239 Hz Gain -5.75 dB Q 1.15

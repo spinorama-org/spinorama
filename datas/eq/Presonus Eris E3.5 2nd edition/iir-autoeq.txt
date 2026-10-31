@@ -1,0 +1,14 @@
+EQ for Presonus Eris E3.5 2nd edition computed from ErinsAudioCorner data
+Preference Score 1.11 with EQ 5.16
+Generated from https://github.com/spinorama-org/spinorama/blob/develop/scripts/generate_peqs.py v0.27
+Dated: 2025-07-18-12:44:36
+
+Preamp: -5.6 dB
+
+Filter  1: ON PK Fc   109 Hz Gain -5.14 dB Q 1.89
+Filter  2: ON PK Fc   252 Hz Gain +3.83 dB Q 1.39
+Filter  3: ON PK Fc   424 Hz Gain +4.93 dB Q 2.95
+Filter  4: ON PK Fc   487 Hz Gain -5.14 dB Q 2.84
+Filter  5: ON PK Fc   560 Hz Gain +5.99 dB Q 1.88
+Filter  6: ON PK Fc  1642 Hz Gain -5.78 dB Q 2.98
+Filter  7: ON PK Fc  8110 Hz Gain -7.57 dB Q 0.32

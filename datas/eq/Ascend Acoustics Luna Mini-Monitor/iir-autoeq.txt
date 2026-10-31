@@ -1,0 +1,14 @@
+EQ for Ascend Acoustics Luna Mini-Monitor computed from ASR data
+Preference Score 1.19 with EQ 3.87
+Generated from http://github.com/spinorama-org/spinorama/blob/develop/scripts/generate_peqs.py v0.26
+Dated: 2024-03-19-16:30:50
+
+Preamp: -2.7 dB
+
+Filter  1: ON PK Fc    72 Hz Gain +2.99 dB Q 0.57
+Filter  2: ON PK Fc   155 Hz Gain -2.75 dB Q 1.51
+Filter  3: ON PK Fc   439 Hz Gain +1.41 dB Q 1.10
+Filter  4: ON PK Fc  1642 Hz Gain -3.17 dB Q 3.00
+Filter  5: ON PK Fc  3177 Hz Gain -1.43 dB Q 2.99
+Filter  6: ON PK Fc  6585 Hz Gain -3.44 dB Q 2.09
+Filter  7: ON PK Fc 12301 Hz Gain -4.11 dB Q 0.75

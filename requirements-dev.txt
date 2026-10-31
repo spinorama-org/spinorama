@@ -1,0 +1,9 @@
+flake8
+importmagic
+ipywidgets
+jupyterlab
+pre-commit
+pyright
+python-lsp-server[pyright]
+ruff
+ruff-lsp

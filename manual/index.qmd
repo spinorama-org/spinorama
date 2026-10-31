@@ -1,0 +1,52 @@
+---
+title: "Spinorama documentation"
+
+author:
+  - name: "Pierre F. Aubert"
+    id: pfa
+    email: pierre@spinorama.org
+
+copyright:
+  holder: Pierre F. Aubert
+  year: 2020-2026
+
+funding: "The author received no specific funding for this work."
+
+date: 2026-08-22
+
+abstract: >
+  User guide for spinorama.org, the Spinorama Python library, the metadata
+  manager, the command-line tools, and the REST API.
+
+---
+
+Welcome to the documentation for [spinorama.org](https://spinorama.org).
+Spinorama publishes loudspeaker measurements, derived graphs, and preference
+scores. The documentation covers both using the website and working with the
+open-source data and tools.
+
+# Start here
+
+- [Understand and compare Spinorama graphs](01_intro.qmd)
+- [Install the software](02_install.qmd)
+- [Compute graphs from your own measurements](08_compute_spin.qmd)
+- [Use the REST API](09_api.qmd)
+
+# Website and data
+
+- [What is a spinorama? Why do we need them?](01_intro.qmd)
+- An [FAQ](05_faq.qmd)
+- [Where do the measurements come from?](06_sources.qmd)
+- [Digitize a graph image](03_digitalisation.qmd)
+- [Bibliography and further reading](07_biblio.qmd)
+
+
+# Contribute data
+
+- [Add or update speaker metadata](03_metadata.qmd)
+- [Use the Python library](04_library.qmd)
+
+
+# API
+
+- [Use the REST API](09_api.qmd)

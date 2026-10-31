@@ -1,0 +1,14 @@
+EQ for JBL 100 Classic computed from Misc data
+Preference Score 1.13 with EQ 3.77
+Generated from http://github.com/spinorama-org/spinorama/blob/develop/scripts/generate_peqs.py v0.26
+Dated: 2024-03-19-16:18:33
+
+Preamp: -1.8 dB
+
+Filter  1: ON PK Fc   270 Hz Gain -2.32 dB Q 2.71
+Filter  2: ON PK Fc   879 Hz Gain +1.95 dB Q 2.80
+Filter  3: ON PK Fc  1083 Hz Gain -1.54 dB Q 3.00
+Filter  4: ON PK Fc  2168 Hz Gain +0.75 dB Q 0.25
+Filter  5: ON PK Fc  2245 Hz Gain -3.34 dB Q 2.17
+Filter  6: ON PK Fc  4989 Hz Gain -2.82 dB Q 2.12
+Filter  7: ON PK Fc 14633 Hz Gain -1.10 dB Q 3.00

@@ -1,0 +1,50 @@
+name: Spinorama Python
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  build:
+    # Data access is enabled explicitly for trusted branches, never public PRs.
+    if: github.event_name == 'push' && vars.ENABLE_PRIVATE_DATA_CI == 'true'
+
+    runs-on: ubuntu-22.04
+
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        submodules: recursive
+        token: ${{ secrets.MEASUREMENTS_READ_TOKEN }}
+        persist-credentials: false
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v6
+      with:
+        python-version: "3.12.7"
+    - run: which python
+    - run: pwd
+    - run: ls -la
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip setuptools wheel
+        # sudo apt-get install -y build-essential python3-selenium python3 python3-pip imagemagick keychain npm wget python3.12-venv
+        pip install -r requirements.txt
+        pip install -r requirements-test.txt
+        pip install -r requirements-meta.txt
+        pip install -r requirements-api.txt
+    - name: Test metadata file
+      run: |
+        PYTHONPATH=.:./src:./src/spinorama:./src/website:./scripts ./scripts/check_meta.py
+    - name: Compilation of cython files
+      run: |
+        PYTHONPATH=.:./src cd src/spinorama && python setup.py build_ext --inplace && ln -s c_compute_scores.cpython-*.so c_compute_scores.so
+    - name: Compilation of rust files
+      run: |
+        pip install maturin
+        cd src/spinorama/compute_scores_rust && maturin build --release && cd ../../../
+        cd src/spinorama/annotations_rust && maturin build --release && cd ../../../
+    - name: Test with pytest
+      run: |
+        PYTHONPATH=.:./src:./src/spinorama:./src/website:./scripts pytest tests

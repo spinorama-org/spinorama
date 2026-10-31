@@ -1,0 +1,48 @@
+{
+  "dependencies": {
+    "@babel/core": "8.0.5",
+    "bulma": "^1.0.4",
+    "canvas": "^3.2.3",
+    "fuse.js": "^7.5.0",
+    "handlebars": "4.7.9",
+    "npm": "12.0.2",
+    "npm-check-updates": "23.1.0",
+    "playright": "1.55.1",
+    "plotly.js-dist-min": "^4.1.2",
+    "rollup": "^4.63.2",
+    "tar": "^7.5.22"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@vitest/coverage-v8": "^5.0.0",
+    "@vitest/ui": "^5.0.0",
+    "eslint": "10.10.0",
+    "eslint-config-prettier": "10.1.8",
+    "globals": "17.12.0",
+    "husky": "9.1.7",
+    "jsdom": "30.0.1",
+    "npm-check-updates": "23.1.0",
+    "oxlint": "1.82.0",
+    "playright": "0.0.22",
+    "prettier": "3.9.6",
+    "sass": "1.104.1",
+    "terser": "5.51.2",
+    "vite": "8.3.0",
+    "vitest": "^5.0.0",
+    "w3c-html-validator": "2.2.3"
+  },
+  "scripts": {
+    "local": "./scripts/generate_html.py --dev --sitedev=http://localhost:8888 --skip-speakers",
+    "dev": "./scripts/generate_html.py --dev --optim --sitedev=https://dev.spinorama.org",
+    "build": "./scripts/generate_html.py --optim",
+    "test": "npx vitest",
+    "coverage": "npx vitest run --coverage",
+    "format": "npx prettier --write \"src/website/*.js\"",
+    "upgrade": "npx npm-check-updates -u",
+    "lint": "oxlint"
+  },
+  "allowScripts": {
+    "canvas@3.2.3": true,
+    "@parcel/watcher@2.6.0": true
+  }
+}

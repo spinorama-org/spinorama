@@ -1,0 +1,66 @@
+<nav class="navbar-bar mx-1 my-1">
+  <div class="dropdown is-hoverable" id="menu-main">
+    <div class="dropdown-trigger" id="menu-main-trigger">
+      <button type="button" class="button" aria-haspopup="true" aria-controls="menu-main" aria-label="menu-main">
+        <svg class="icon"><use href="#icon-bars"/></svg>
+      </button>
+    </div>
+    <div class="dropdown-menu" id="menu-main-dropdown" role="menu">
+      <div class="dropdown-content">
+        <%include file="nav_menu.html"/>
+      </div>
+    </div>
+  </div>
+  <a href="/" class="navbar-brand-link is-size-4">
+    <b>SPIN</b>orama
+  </a>
+  <div class="field has-addons navbar-search-field">
+    <div class="control has-icons-right is-expanded">
+      <input id="searchInput" class="input is-info" type="text" placeholder="brand or model ...">
+      <span class="icon is-right">
+        <svg width="24px" height="24px" aria-hidden="true"><use href="#icon-search"/></svg>
+      </span>
+    </div>
+    <div class="control">
+      <div class="dropdown is-right" id="filters-dropdown">
+        <div class="dropdown-trigger" id="filters-dropdown-trigger">
+          <button type="button" class="button" aria-haspopup="true" aria-controls="filters-dropdown-menu" aria-label="filter">
+            <span class="icon">
+              <svg aria-hidden="true"><use href="#icon-sliders"/></svg>
+            </span>
+          </button>
+        </div>
+        <div class="dropdown-menu" id="filters-dropdown-menu" role="menu">
+          <div class="dropdown-content">
+            <div class="dropdown-item">
+              <div class="label">Filter by:</div>
+            </div>
+            <hr class="dropdown-divider">
+            <%include file="nav_filters.html"/>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="control">
+      <div class="dropdown is-hoverable is-right" id="sorters-dropdown">
+        <div class="dropdown-trigger" id="sorters-dropdown-trigger">
+          <button type="button" class="button" aria-haspopup="true" aria-controls="sorters-dropdown-menu" aria-label="sort">
+            <span class="icon">
+              <svg width="16px" height="16px" aria-hidden="true"><use href="#icon-sort"/></svg>
+            </span>
+          </button>
+        </div>
+        <div class="dropdown-menu" id="sorters-dropdown-menu" role="menu">
+          <div class="dropdown-content">
+            <div class="dropdown-item">
+              <div class="label">Sort by:</div>
+            </div>
+            <hr class="dropdown-divider">
+            <%include file="nav_sortby.html"/>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</nav>
+<%include file="banner.html"/>

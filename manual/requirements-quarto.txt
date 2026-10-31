@@ -1,0 +1,12 @@
+pandas
+numpy
+scipy
+more_itertools
+frozendict
+jupyter
+plotly>=6.3.0
+notebook>=7.0
+anywidget>=0.9.13
+wand
+kaleido>=1.0.0
+flammkuchen

@@ -1,0 +1,164 @@
+---
+title: "Install and run Spinorama"
+date: 2026-08-22
+abstract: >
+  Install the Spinorama development environment, metadata manager, command-line
+  tools, and documentation dependencies.
+---
+
+This project has two audiences: people who want to run the analysis tools and
+people who want to develop or contribute data. The setup script creates the
+complete environment. A smaller installation is also provided for users who
+only need Python analysis or the metadata manager.
+
+## Requirements
+
+| Tool | Version | Required for |
+|---|---|---|
+| Python | 3.12 or 3.13 (`>=3.12,<3.14`) | Python tools and metadata manager |
+| Git | Any recent version | Source checkout and contributions |
+| Node.js/npm | LTS | Website build and JavaScript tests |
+| Rust/cargo | Current stable | Optional scoring extension |
+| maturin | Current | Optional Rust extension build |
+| Quarto | Current | Documentation build |
+
+## Complete setup
+
+### Linux and macOS
+
+Clone the repository and run the setup script from its root:
+
+```{.shell}
+git clone https://github.com/spinorama-org/spinorama.git
+cd spinorama
+./scripts/setup.sh
+```
+
+On Linux the script uses `apt` for system packages; on macOS it uses Homebrew.
+It creates `.venv`, installs the Python requirement files, installs Node
+dependencies, downloads third-party assets, and builds the optional native
+extensions when their toolchains are available.
+
+Activate the environment in every new shell:
+
+```{.shell}
+source .venv/bin/activate
+export PYTHONPATH="$PWD/src:$PWD/src/website${PYTHONPATH:+:$PYTHONPATH}"
+```
+
+The `PYTHONPATH` setting is needed because the repository uses a `src` layout
+and is normally run from a checkout rather than an installed wheel.
+
+### Windows
+
+Install [Python 3.12](https://www.python.org/downloads/),
+[Node.js](https://nodejs.org/), and [Git](https://git-scm.com/), then run:
+
+```powershell
+.\scripts\setup.ps1
+```
+
+Activate the environment and set the import path in each PowerShell session:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+$env:PYTHONPATH = "$PWD\src;$PWD\src\website"
+```
+
+The setup script also enables UTF-8 mode for Python on Windows.
+
+## Smaller Python setup
+
+If the system dependencies and the repository's Python environment already
+exist, install only the runtime and metadata dependencies:
+
+```{.shell}
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt -r requirements-meta.txt
+export PYTHONPATH="$PWD/src:$PWD/src/website"
+```
+
+Install the test and development requirements when contributing code:
+
+```{.shell}
+python -m pip install -r requirements-test.txt -r requirements-dev.txt
+```
+
+## Run the applications
+
+Open the Qt metadata manager with:
+
+```{.shell}
+python -m metaedit.app
+```
+
+Use `python -m metaedit.app --speaker "Brand Model"` to open an existing
+speaker directly. See [Add speaker metadata](03_metadata.qmd) for the complete
+workflow and Git/PR requirements.
+
+Compute graphs and preference scores from a directory of measurements with:
+
+```{.shell}
+python scripts/compute_spin.py /path/to/measurement-data
+```
+
+The command auto-detects supported formats and writes PNG graphs and a
+`*_scores.json` file. See [Compute a spinorama](08_compute_spin.qmd) for the
+format layout and options.
+
+## Run tests and checks
+
+From the repository root, with the virtual environment active:
+
+```{.shell}
+PYTHONPATH=src pytest -q tests
+npx vitest
+./scripts/check_meta.py
+```
+
+Useful formatting and lint checks are:
+
+```{.shell}
+ruff format .
+ruff check src tests
+npx prettier --check src/website
+```
+
+Run `./scripts/check_html.sh` when checking generated HTML. The complete
+project setup and CI may run additional checks for native extensions and
+generated assets.
+
+## Build the documentation
+
+Install Quarto separately, then install the Python packages used by the
+documentation examples:
+
+```{.shell}
+python -m pip install -r manual/requirements-quarto.txt
+quarto render manual
+```
+
+The rendered site is written to `dist/docs`. Code examples in the manual are
+currently illustrative: execution is disabled in `manual/_quarto.yml`, so
+they are not run automatically during rendering.
+
+## Docker
+
+The repository also contains `Dockerfile.base` and `Dockerfile` for a
+containerized build:
+
+```{.shell}
+docker build -f Dockerfile.base -t spin-base:latest .
+docker build -f Dockerfile -t spinorama:latest .
+docker run --rm -it spinorama:latest
+```
+
+For an interactive shell with the checkout mounted:
+
+```{.shell}
+docker run --rm -it -p 5173:5173 -v "$PWD":/work spinorama:latest bash
+```
+
+Inside the container, `pytest -q tests` runs Python tests and
+`npx vite --host 0.0.0.0 --port 5173` starts the website development server.
