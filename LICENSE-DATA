@@ -1,0 +1,31 @@
+Measurement data license
+========================
+
+Unless otherwise stated for a specific measurement, measurement data distributed
+by Spinorama.org, including repository data, website downloads, and API responses,
+is licensed under the Creative Commons Attribution-NonCommercial-ShareAlike 4.0
+International License (CC BY-NC-SA 4.0).
+
+License: https://creativecommons.org/licenses/by-nc-sa/4.0/
+Full legal terms: https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode.en
+
+Commercial use is not permitted under this license. Commercial use requires
+separate permission from the relevant rights holder(s).
+
+You may share and adapt the data for noncommercial purposes provided you:
+- Credit the original measurement creator and source, retain supplied attribution
+  notices, link to the license, and indicate any changes.
+- Distribute shared adaptations under the same license or a Creative Commons
+  compatible license.
+- Do not impose additional legal or technological restrictions on the rights
+  granted by the license.
+
+Copyright remains with the respective rights holders. Measurement-specific
+licenses (including LICENSE.txt or LICENSE.md supplied with a measurement) and
+source notices take precedence over this default. This default does not override
+third-party rights. Public-domain material and uses permitted by applicable
+exceptions or limitations are unaffected. The full legal terms govern; this
+notice summarizes them.
+
+This notice applies to measurement data. The software is licensed separately
+under the GNU GPL; see LICENSE.

@@ -1,0 +1,187 @@
+---
+title: "Understand Spinorama measurements"
+
+date: 2026-10-29
+
+abstract: >
+  How to read Spinorama graphs, compare speakers, and interpret their limits.
+
+---
+
+# Measurements
+
+## What is a spinorama set of graphs?
+
+A Spinorama is a standardized set of loudspeaker responses intended to make
+directivity and tonal behavior easier to compare. The method is defined by the
+US [CTA](https://cta.tech); see the [standard method of measurement](https://shop.cta.tech/products/standard-method-of-measurement-for-in-home-loudspeakers)
+for the formal definitions.
+
+Here is an example:
+![Genelec 8341A](images/Genelec-8341A-CEA2034.png)
+
+The spinorama gives you a few graphs:
+
+- *On Axis:* the response directly in front of the speaker. A smooth response
+  is generally easier to equalize.
+- *Listening Window:* an average of responses near the on-axis direction. It
+  represents small changes in listening position better than a single trace.
+- *Early Reflections:* an estimate of the first reflected energy in a typical
+  room. It is usually smoother and slopes downward with frequency.
+- *Sound Power:* an average over the full measurement sphere. Its slope is
+  often greater than that of Early Reflections for conventional speakers.
+- *ERDI and SPDI:* the differences between the Early Reflection curve and the
+  Listening Window (or Sound Power and Listening Window). Smooth, predictable
+  directivity is generally easier to equalize. Equalization cannot repair
+  large directivity errors because it cannot make off-axis sound follow the
+  on-axis correction.
+
+The speaker above is *very* good. You can compare with another one:
+
+![Tannoy XT6](images/Tannoy-Revolution-XT6-CEA2034.png)
+
+which has larger tonal deviations. A 3 dB change is a substantial acoustic
+change, but it does not mean that perceived loudness doubles or halves. If the
+on-axis response rises toward the treble, the speaker may sound brighter in a
+typical listening setup.
+
+![Tannoy XT6](images/Tannoy-Revolution-XT6-ON.png)
+
+## Further reading and viewing
+
+### Reading
+
+- You can go to the source (<a
+              href="https://shop.cta.tech/products/standard-method-of-measurement-for-in-home-loudspeakers"
+              >the standard document</a
+            >) and starting page 56, you have a good and compact explanation of
+            each curve.
+- This
+            <a
+              href="https://www.audiosciencereview.com/forum/index.php?threads/jbl-305p-mkii-and-control-1-pro-monitors-review.10811/"
+              >post on ASR</a
+            >
+            by
+            <a href="https://www.linkedin.com/in/amir-majidimehr-0014a75/"
+              >Amir Majidimehr</a
+            >
+            gives good insights on how to analyse a spinorama (20 min. read).
+- Another option is this
+            <a
+              href="https://www.audioholics.com/loudspeaker-design/understanding-loudspeaker-measurements"
+              >post on Audioholics</a
+            >
+            by
+            <a href="https://www.audioholics.com/authors/james-larson"
+              >James Larson</a
+            >
+- A reference article is
+            <a
+              href="https://www.audioholics.com/loudspeaker-design/measure-loudspeaker-performance"
+              >Objective Loudspeaker Measurements to Predict Subjective
+              Preferences?</a
+            >
+            written by
+            <a href="https://www.linkedin.com/in/floydtoole/"
+              >Dr. Floyd E. Toole</a
+            >
+            and
+            <a href="https://www.audioholics.com/authors/gene-dellasala"
+              >Gene DellaSala</a
+            >
+            on Audioholics.
+- <a href="https://www.harman.com/documents/AudioScience_0.pdf">Audio-Science in the service of Art</a> from Floyd E. Toole is a good, easy to read summary.
+
+### Videos
+
+There is a useful set of videos from <a href="https://www.youtube.com/channel/UCW_IqM21u0J-zsKtCq4Gj2w">Erin's Audio Corner</a> on YouTube:
+
+- <a href="https://www.youtube.com/watch?v=dltza-EGtCg">What Is Frequency Response? || Understanding the Measurements Part 1</a>
+- <a href="https://www.youtube.com/watch?v=j_-b6A1xJaw">Off-Axis vs On-Axis Response || Understanding the Measurements Part 2</a>
+- <a href="https://www.youtube.com/watch?v=b3hYn02uBog">What the heck is SPINORAMA?! || Understanding the Measurements Part 3</a>
+- <a href="https://www.youtube.com/watch?v=qmBit3GWSWE">Predicting Loudspeaker Performance In YOUR Room || Understanding the Measurements Part 4</a>
+- <a href="https://www.youtube.com/watch?v=6YY71Wqv2u0&t=2s">Loudspeaker Compression || Understanding the Measurements Part 5</a>
+
+# How to select a speaker
+
+Speaker choice depends on the room, listening distance, budget, and priorities.
+The measurements are evidence to combine with those practical constraints,
+not a replacement for listening.
+
+## Criteria
+
+Useful criteria include:
+
+- *Price*: Price is not a reliable proxy for measured performance. Consider
+  value, warranty, and local availability.
+- *Design*: Choose the form factor, directivity, and features that fit the
+  room and your preferences.
+- *Build quality*: Check independent reviews, warranty terms, and repair
+  support rather than inferring them from measurements.
+- *Support quality*: Consider replacement parts, service availability, and the
+  length and coverage of the warranty.
+- *Tonality*: Preference scores combine several response characteristics. They
+  are useful for comparisons, but they do not measure every aspect of sound
+  quality.
+- *Maximum output*: Decide how loud you need to listen and at what distance.
+  SPL capability depends on room size, listening distance, bass content, and
+  distortion limits.
+
+- *Bass extension*: Small speakers generally need a subwoofer for deep bass at
+  high levels. DSP can extend bass from a small cabinet, but maximum output
+  and distortion still matter. Consider the kind of content you listen to and
+  the level you need.
+
+  You can choose floorstanders or bookshelves with subwoofers. Integration is
+  not always easy, but it is practical with careful placement and calibration.
+
+## How good is your room?
+
+- Is the room dedicated to music?
+- Is the room symmetrical?
+- Does it have some absorption?
+- Have you added panels to control reflections?
+- Do you have multiple subwoofers to control bass linearity?
+- Have you measured the speakers in the room?
+- Are you using room-correction software?
+
+If the room is untreated or the listening position is unknown, room acoustics
+and placement may matter more than small score differences. A speaker with
+smooth directivity is usually easier to integrate and equalize, but no
+spinorama predicts every room.
+
+## How to interpret the numbers on the landing page?
+
+Each speaker measurement shows up in a box similar to:
+
+![Example for one speaker on the landing page](images/speaker-box.png)
+
+- **Price**: a reference price in USD per speaker when available. It may differ
+  by country, retailer, currency, and date.
+
+- **Preference score**: an aggregate computed from the Spinorama data. Higher
+  generally indicates a more preferred response under the model, but the score
+  is not a complete measure of quality or maximum output.
+
+  - The score may be marked unavailable for shapes such as surround, in-wall,
+    or column speakers where the model is not a good fit. The predicted
+    in-room response is a model, not a simulation of your room.
+  - Treat small differences cautiously; measurement quality and processing can
+    affect the result.
+  - Smoothing or incomplete data can improve or worsen a score independently
+    of the physical speaker.
+  - The score does not describe distortion, compression, maximum output, or
+    reliability.
+  - The implementation is available in
+    [`src/spinorama/compute`](https://github.com/spinorama-org/spinorama/tree/develop/src/spinorama/compute).
+
+- **Bass extension**: the low-frequency extension (LFX) estimates where the
+  sound-power response falls below a reference level. Lower frequency is
+  generally better, provided output and distortion remain acceptable.
+
+  It is not the same as the frequency of the -3 dB point. It uses the sound
+  power response and a reference level derived from the listening window so
+  that bass extension is comparable across speakers.
+
+- **Flatness**: the variation in dB around the average on-axis SPL between
+  300 Hz and 3 kHz. Lower is better.

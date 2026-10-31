@@ -1,0 +1,92 @@
+---
+title: "FAQ"
+date: 2026-10-29
+---
+
+## Can I reuse the measurement data? {#measurement-data-license}
+
+Unless otherwise stated for a specific measurement, measurement data on
+Spinorama.org, including downloads and data provided through the API, is licensed
+under [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International
+(CC BY-NC-SA 4.0)](https://creativecommons.org/licenses/by-nc-sa/4.0/).
+Measurement-specific licenses and source notices take precedence over this default.
+
+You may share and adapt the data for noncommercial purposes, subject to these terms:
+
+- **Attribution:** credit the original measurement creator and source, retain
+  supplied attribution notices, link to the license, and indicate any changes.
+- **NonCommercial:** commercial use is not permitted under this license.
+  Commercial use means use primarily intended for commercial advantage or
+  monetary compensation. Obtain separate permission from the relevant rights
+  holder(s) before using the data commercially.
+- **ShareAlike:** if you share adapted data, distribute it under the same license
+  or a Creative Commons compatible license.
+- **No additional restrictions:** do not impose legal terms or technological
+  restrictions that prevent others from exercising the rights the license grants.
+
+Copyright remains with the respective rights holders. This default does not
+override third-party rights or measurement-specific terms. Public-domain material
+and uses permitted by applicable exceptions or limitations are unaffected.
+See the [full legal terms](https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode.en).
+
+This license applies to measurement data. The Spinorama software is licensed
+separately under GPLv3.
+
+## Can I trust the data?
+
+Treat the data as evidence, not as a guarantee. Measurements come from
+independent reviewers, research labs, and manufacturers, with different rooms,
+equipment, processing, and reporting practices. The measurement quality field
+helps you filter the website results, but it cannot remove every source of
+uncertainty.
+
+## How should I compare measurement quality?
+
+- **High** generally means a Klippel NFS or a large anechoic-chamber
+  measurement.
+- **Medium** generally means a smaller or less controlled measurement setup,
+  often with reduced confidence at low frequencies.
+- **Low** includes vendor data, heavily processed data, or measurements made
+  without a fully anechoic setup.
+
+Even a high-quality measurement may be smoothed. Compare like with like and
+check the source, format, smoothing, and frequency range before drawing a
+conclusion.
+
+## How precise are the scores?
+
+Scores inherit the limitations of their input data. Smoothing, missing angles,
+different calibration conventions, and incomplete bass data can change a
+result. Avoid treating small score differences as meaningful, and do not use a
+preference score to infer distortion, compression, maximum output, reliability,
+or room response.
+
+## Can the data tell me which speaker to buy?
+
+It can narrow a choice, especially when you value smooth on-axis response and
+predictable directivity. Also consider price, placement, listening distance,
+maximum level, bass requirements, warranty, service, and your room. Read
+[How to understand Spinorama measurements](01_intro.qmd) for context.
+
+## Should I use room EQ?
+
+Room EQ can improve tonal balance, especially below the transition frequency
+where room modes dominate. Correct the listening position, speaker placement,
+and room problems first. Equalization cannot repair severe directivity errors,
+distortion, or insufficient maximum output.
+
+## What does focused or broad directivity mean?
+
+Focused speakers send less energy toward room boundaries and can work well in
+reflective rooms, but they usually have a smaller listening area. Broad or
+constant-directivity speakers can sound more spacious, but their room
+reflections matter more. The best choice depends on room treatment, distance,
+and listening position.
+
+## How can I contribute?
+
+The project is open source on [GitHub](https://github.com/spinorama-org/spinorama).
+Use the [metadata manager](03_metadata.qmd) to add or update speaker metadata,
+and open an issue for bugs, incorrect data, missing measurements, or UX
+feedback. Include the measurement source and relevant file paths, but do not
+upload copyrighted or private material without permission.

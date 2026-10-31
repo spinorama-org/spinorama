@@ -1,0 +1,56 @@
+---
+title: "Measurement sources"
+date: 2026-08-22
+abstract: >
+  The main public sources used by the Spinorama database and further reading
+  about loudspeaker measurements.
+---
+
+Spinorama combines measurements from several sources. Each source has its own
+equipment, calibration, file format, and editorial practices. The source and
+quality fields on a speaker page should always be read together with the
+graphs.
+
+## Independent and research sources
+
+- [Audio Science Review](https://www.audiosciencereview.com/) publishes many
+  loudspeaker measurements and explains its measurement process in its review
+  pages. See [how to support ASR](https://www.audiosciencereview.com/forum/index.php?threads/how-to-support-audio-science-review.8150/).
+- [Erin's Audio Corner](https://www.erinsaudiocorner.com/) publishes loudspeaker
+  reviews and measurements, with additional explanations on its
+  [YouTube channel](https://youtube.com/c/ErinsAudioCorner). See its
+  [contribution page](https://www.erinsaudiocorner.com/contribute/).
+- [Princeton 3D3A](https://www.princeton.edu/3D3A/) provides a research database
+  of loudspeaker polar measurements. Its [database manual](https://www.princeton.edu/3D3A/Manuals/3D3A_Directivity_Database.pdf)
+  documents the measurement conventions.
+- [speakerdata2034](https://speakerdata2034.blogspot.com/) is an index of
+  Spinorama data from multiple sources. Its [measurement index](https://speakerdata2034.blogspot.com/2019/03/all-spinorama-data-index.html)
+  is useful when looking for an original review or project.
+
+## Manufacturer and vendor data
+
+Some manufacturers publish GLL files. GLL is a loudspeaker data format
+developed by [AFMG](https://www.afmg.eu/en/gll-loudspeaker-file-format), often
+used for professional, touring, and installed-sound products. Vendor data can
+be useful, but check whether it is smoothed, simulated, or measured, and record
+that information in the metadata.
+
+The database includes data from, among others:
+
+Alcons Audio, AsciLab, Audio First Designs, Axiom, Biamp, Coda, d&b
+Technik, DAS, Danley, FBT, Fulcrum Acoustics, Genelec, Highlite, Idea, JBL,
+K-Array, KME Sound, KV2 Audio, Kling Freitag, LD Systems, Martin Audio, Meyer
+Sound, Neumann, Nexo, Presonus, QSC, RCF, SE Audiotechnik, Seeburg, Sigberg
+Audio, Soundvision, Turbosound, Wharfedale Pro, and Yamaha.
+
+This list is not a claim that every product from a listed organization has been
+measured or that all measurements have the same quality. Use the individual
+measurement's origin and quality metadata as the source of truth.
+
+## Adding a source
+
+If you have original measurement files, preserve them in the repository's
+measurement layout and record the origin, format, quality, and any review URL
+with the [metadata manager](03_metadata.qmd). If you only have a graph image,
+use the [digitization guide](03_digitalisation.qmd). Do not redistribute
+copyrighted source files without permission.

@@ -1,0 +1,1601 @@
+// -*- coding: utf-8 -*-
+// Configuration management for spinorama charts
+//
+// Copyright (C) 2020-2025 Pierre Aubert pierre(at)spinorama(dot)org
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+/*eslint no-undef: "error"*/
+
+import { labelShort, labelLong } from './plot-labels.js';
+
+// Color palettes for graphs
+export const colorPalettes = {
+    default: [
+        'rgb(92, 119, 165)',
+        'rgb(220, 132, 42)',
+        'rgb(200, 88, 87)',
+        'rgb(137, 181, 177)',
+        'rgb(113, 161, 82)',
+        'rgb(186, 176, 172)',
+        'rgb(225, 87, 89)',
+        'rgb(176, 122, 161)',
+        'rgb(118, 183, 178)',
+        'rgb(255, 157, 167)',
+    ],
+    vibrant: [
+        'rgb(255, 107, 107)',
+        'rgb(78, 205, 196)',
+        'rgb(69, 183, 209)',
+        'rgb(150, 206, 180)',
+        'rgb(255, 234, 167)',
+        'rgb(221, 160, 221)',
+        'rgb(152, 216, 200)',
+        'rgb(247, 220, 111)',
+        'rgb(187, 143, 206)',
+        'rgb(133, 193, 233)',
+    ],
+    pastel: [
+        'rgb(255, 179, 186)',
+        'rgb(255, 223, 186)',
+        'rgb(255, 255, 186)',
+        'rgb(186, 255, 201)',
+        'rgb(186, 225, 255)',
+        'rgb(230, 230, 250)',
+        'rgb(240, 230, 140)',
+        'rgb(221, 160, 221)',
+        'rgb(152, 251, 152)',
+        'rgb(245, 222, 179)',
+    ],
+    dark: [
+        'rgb(185, 195, 255)',
+        'rgb(255, 180, 171)',
+        'rgb(80, 220, 160)',
+        'rgb(255, 193, 70)',
+        'rgb(226, 186, 217)',
+        'rgb(193, 197, 221)',
+        'rgb(255, 157, 120)',
+        'rgb(133, 193, 233)',
+        'rgb(255, 214, 102)',
+        'rgb(174, 214, 181)',
+    ],
+    monochrome: [
+        'rgb(44, 62, 80)',
+        'rgb(52, 73, 94)',
+        'rgb(93, 109, 126)',
+        'rgb(133, 146, 158)',
+        'rgb(174, 182, 191)',
+        'rgb(213, 219, 219)',
+        'rgb(234, 237, 237)',
+        'rgb(248, 249, 249)',
+        'rgb(189, 195, 199)',
+        'rgb(149, 165, 166)',
+    ],
+};
+
+// Contour colorscales
+export const contourColorscales = {
+    default: [
+        [0, 'rgb(0,0,168)'],
+        [0.1, 'rgb(0,0,200)'],
+        [0.2, 'rgb(0,74,255)'],
+        [0.3, 'rgb(0,152,255)'],
+        [0.4, 'rgb(74,255,161)'],
+        [0.5, 'rgb(161,255,74)'],
+        [0.6, 'rgb(255,255,0)'],
+        [0.7, 'rgb(234,159,0)'],
+        [0.8, 'rgb(255,74,0)'],
+        [0.9, 'rgb(222,74,0)'],
+        [1, 'rgb(253,14,13)'],
+    ],
+    viridis: [
+        [0, 'rgb(68,1,84)'],
+        [0.1, 'rgb(72,40,120)'],
+        [0.2, 'rgb(62,74,137)'],
+        [0.3, 'rgb(49,104,142)'],
+        [0.4, 'rgb(38,130,142)'],
+        [0.5, 'rgb(31,158,137)'],
+        [0.6, 'rgb(53,183,121)'],
+        [0.7, 'rgb(109,205,89)'],
+        [0.8, 'rgb(180,222,44)'],
+        [0.9, 'rgb(253,231,37)'],
+        [1, 'rgb(253,231,37)'],
+    ],
+    plasma: [
+        [0, 'rgb(13,8,135)'],
+        [0.1, 'rgb(75,3,161)'],
+        [0.2, 'rgb(125,3,168)'],
+        [0.3, 'rgb(168,34,150)'],
+        [0.4, 'rgb(203,70,121)'],
+        [0.5, 'rgb(229,107,93)'],
+        [0.6, 'rgb(248,148,65)'],
+        [0.7, 'rgb(253,195,40)'],
+        [0.8, 'rgb(239,248,33)'],
+        [0.9, 'rgb(240,249,33)'],
+        [1, 'rgb(240,249,33)'],
+    ],
+    cool: [
+        [0, 'rgb(0,255,255)'],
+        [0.1, 'rgb(25,230,255)'],
+        [0.2, 'rgb(51,204,255)'],
+        [0.3, 'rgb(76,179,255)'],
+        [0.4, 'rgb(102,153,255)'],
+        [0.5, 'rgb(127,128,255)'],
+        [0.6, 'rgb(153,102,255)'],
+        [0.7, 'rgb(178,76,255)'],
+        [0.8, 'rgb(204,51,255)'],
+        [0.9, 'rgb(229,25,255)'],
+        [1, 'rgb(255,0,255)'],
+    ],
+    hot: [
+        [0, 'rgb(0,0,0)'],
+        [0.1, 'rgb(26,0,0)'],
+        [0.2, 'rgb(51,0,0)'],
+        [0.3, 'rgb(77,0,0)'],
+        [0.4, 'rgb(102,0,0)'],
+        [0.5, 'rgb(128,0,0)'],
+        [0.6, 'rgb(153,51,0)'],
+        [0.7, 'rgb(179,102,0)'],
+        [0.8, 'rgb(204,153,0)'],
+        [0.9, 'rgb(230,204,0)'],
+        [1, 'rgb(255,255,255)'],
+    ],
+};
+
+// Trendline trace names (module-level constant, not recreated per call)
+const trendNames = new Set([
+    'Band ±3dB',
+    'Band ±1.5dB',
+    'Midrange Band +3dB',
+    'Midrange Band -3dB',
+    'Midrange ±3dB',
+    'Linear interpolation',
+]);
+
+// Default delta configuration options for plots. Keep this as a function so
+// loadConfigFromStorage remains safe when Safari evaluates a cyclic module
+// graph before the exported defaultConfig binding has been initialized.
+export function createDefaultConfig() {
+    return {
+    font: {
+        family: 'default', // 'default' means keep original value
+        size: 0, // 0 means no change to original size
+        color: 'default', // 'default' means keep original color
+    },
+    colors: {
+        palette: 'default', // 'default' means keep original palette
+    },
+    contour: {
+        colorscale: 'default', // 'default' means keep original colorscale
+    },
+    grid: {
+        show: true, // Boolean overrides original value
+        color: 'default', // 'default' means keep original color
+    },
+    legend: {
+        show: true, // Boolean overrides original value
+        position: 'default', // 'default' means keep original position
+        xanchor: 'default', // 'default' means keep original xanchor
+        yanchor: 'default', // 'default' means keep original yanchor
+        xoffset: 0, // 0 means no change to original offset (range: -1.0 to 1.0)
+        yoffset: 0, // 0 means no change to original offset (range: -1.0 to 1.0)
+        label: 'default', // 'default' means keep original label style
+    },
+    margins: {
+        l: 0, // 0 means no change to original margin
+        r: 0, // 0 means no change to original margin
+        t: 0, // 0 means no change to original margin
+        b: 0, // 0 means no change to original margin
+        pad: 0, // 0 means no change to original padding
+    },
+    showAxisLabels: true, // Boolean overrides original value
+    layout: {
+        direction: 'default', // 'default' means keep original direction
+        splRange: '50 dB', // Absolute selection, not a numeric configuration delta
+    },
+    colorbar: {
+        thickness: 0, // 0 means no change to original thickness
+        len: 0, // 0 means no change to original length
+        show: true, // Boolean overrides original value
+    },
+    annotations: {
+        show: true, // Boolean overrides original value
+        showA: true, // Per-speaker A (compare mode)
+        showB: true, // Per-speaker B (compare mode)
+    },
+    trendlines: {
+        show: true, // Boolean overrides original value
+        showA: true, // Per-speaker A (compare mode)
+        showB: true, // Per-speaker B (compare mode)
+    },
+    zones: {
+        show: true, // Boolean overrides original value
+        showA: true, // Per-speaker A (compare mode)
+        showB: true, // Per-speaker B (compare mode)
+    },
+    phase: {
+        show: true,
+        groupDelay: true,
+        wrap: true,
+        removeDelay: true,
+    },
+    };
+}
+
+export const defaultConfig = createDefaultConfig();
+
+// Local storage key for configuration
+export const CONFIG_STORAGE_KEY = 'spinorama-plot-config';
+
+// Save configuration to local storage
+export function saveConfigToStorage(config) {
+    try {
+        localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(config));
+    } catch (error) {
+        console.warn('Failed to save configuration to localStorage:', error);
+    }
+}
+
+// Load configuration from local storage and apply to graph config
+export function loadConfigFromStorage(graphConfig) {
+    const defaults = createDefaultConfig();
+    // If graphConfig is a primitive, start with defaultConfig as base
+    let baseConfig =
+        typeof graphConfig === 'object' && graphConfig !== null && !Array.isArray(graphConfig) ? graphConfig : defaults;
+
+    try {
+        const storedConfig = localStorage.getItem(CONFIG_STORAGE_KEY);
+        if (storedConfig) {
+            const userConfig = JSON.parse(storedConfig);
+            // First apply default deltas, then user deltas
+            return mergeConfigs(mergeConfigs(baseConfig, defaults), userConfig);
+        }
+    } catch (error) {
+        console.warn('Error loading configuration from localStorage:', error);
+    }
+
+    // Apply just the default config as delta if storage access fails
+    return mergeConfigs(baseConfig, defaults);
+}
+
+// Apply delta configuration to a base configuration
+export function mergeConfigs(baseConf, deltaConf) {
+    if (!deltaConf) return baseConf;
+    const result = JSON.parse(JSON.stringify(baseConf));
+    applyDelta(result, deltaConf);
+    return result;
+
+    function applyDelta(target, delta) {
+        // If target itself is a primitive (string, number, etc), we can't set properties on it
+        if (typeof target !== 'object' || target === null || Array.isArray(target)) {
+            return; // Can't apply delta to a primitive target
+        }
+
+        for (const key in delta) {
+            if (delta[key] && typeof delta[key] === 'object' && !Array.isArray(delta[key])) {
+                // Check if target[key] is a string or other primitive - if so, convert to object
+                // Also handle the case where target[key] is null or undefined
+                if (!target[key] || typeof target[key] !== 'object' || Array.isArray(target[key])) {
+                    target[key] = {};
+                }
+                applyDelta(target[key], delta[key]);
+            } else {
+                // For strings, 'default' means keep the original value
+                if (typeof delta[key] === 'string' && delta[key] === 'default') {
+                    continue; // Skip this property, keep target value
+                }
+                // For numbers, apply as delta (addition)
+                else if (typeof delta[key] === 'number' && typeof target[key] === 'number') {
+                    target[key] += delta[key];
+                }
+                // For other cases (booleans, arrays, etc), replace as before
+                else {
+                    target[key] = delta[key];
+                }
+            }
+        }
+    }
+}
+
+// Phase metadata is emitted by the Python on-axis plot. Older graph files do
+// not have it, so leave those graphs untouched until they are regenerated.
+export function applyPhaseOptions(options, phaseConfig = {}) {
+    // Rebuild wrap markers on every configuration change (including unwrapping).
+    if (options?.data) options.data = options.data.filter((trace) => !trace.meta?.spinorama_phase_jump && !trace.meta?.spinorama_group_delay);
+    const traces = (options?.data || []).filter((trace) => trace.meta?.spinorama_phase);
+    if (!traces.length || !options.layout) return options;
+    const wrap = phaseConfig.wrap !== false;
+    const removeDelay = phaseConfig.removeDelay !== false;
+    for (const trace of traces) {
+        const phase = trace.meta.spinorama_phase;
+        const values = removeDelay ? phase.corrected : phase.measured;
+        trace.visible = phaseConfig.show === false ? 'legendonly' : true;
+        // Phase is already unwrapped in the metadata. Differentiate each valid
+        // interval in Hz: -d(phase degrees)/df / 360 gives seconds.
+        const delayX = [];
+        const delayY = [];
+        for (let i = 1; i < phase.freq.length; i++) {
+            const f0 = phase.freq[i - 1];
+            const f1 = phase.freq[i];
+            const valid = Number.isFinite(f0) && Number.isFinite(f1) && f1 > f0
+                && Number.isFinite(values[i - 1]) && Number.isFinite(values[i]);
+            delayX.push(valid ? (f0 + f1) / 2 : f1);
+            delayY.push(valid ? -(values[i] - values[i - 1]) / (f1 - f0) * 1000 / 360 : null);
+        }
+        options.data.push({
+            type: 'scatter', mode: 'lines', x: delayX, y: delayY,
+            xaxis: trace.xaxis || 'x', yaxis: 'y3',
+            name: (trace.name || 'Phase').replace(/Phase(?: \(deg\))?/i, 'Group Delay (ms)'),
+            visible: phaseConfig.groupDelay === false ? 'legendonly' : true,
+            showlegend: true, connectgaps: false,
+            line: { ...trace.line, dash: 'dash' },
+            hovertemplate: '%{x:.0f} Hz<br>%{y:.3f} ms<extra>%{fullData.name}</extra>',
+            meta: { spinorama_group_delay: true },
+        });
+        const x = [];
+        const y = [];
+        const jumpX = [];
+        const jumpY = [];
+        let previous = null;
+        for (let i = 0; i < phase.freq.length; i++) {
+            let value = values[i];
+            if (value === null || !Number.isFinite(value) || !Number.isFinite(phase.freq[i])) {
+                x.push(phase.freq[i]);
+                y.push(null);
+                previous = null;
+                continue;
+            }
+            if (wrap) value = ((value + 180) % 360 + 360) % 360 - 180;
+            if (wrap && previous !== null && Math.abs(value - previous) > 180) {
+                x.push(phase.freq[i]);
+                y.push(null);
+                // Equal x coordinates make the wrap marker strictly vertical.
+                jumpX.push(phase.freq[i], phase.freq[i], null);
+                jumpY.push(-180, 180, null);
+            }
+            x.push(phase.freq[i]);
+            y.push(value);
+            previous = value;
+        }
+        trace.x = x;
+        trace.y = y;
+        trace.connectgaps = false;
+        trace.yaxis = 'y2';
+        if (jumpX.length) {
+            const index = options.data.indexOf(trace);
+            const palette = options.layout.colorway || options.layout.template?.layout?.colorway || colorPalettes.default;
+            const color = trace.line?.color || trace.marker?.color || palette[index % palette.length];
+            trace.line = { ...trace.line, color };
+            options.data.push({
+                type: 'scatter', mode: 'lines', x: jumpX, y: jumpY,
+                xaxis: trace.xaxis || 'x', yaxis: 'y2',
+                name: 'Phase wraps', showlegend: false, hoverinfo: 'skip',
+                visible: trace.visible, opacity: trace.opacity,
+                connectgaps: false,
+                line: { color, width: trace.line.width || 1.5, dash: 'dot' },
+                meta: { spinorama_phase_jump: true, phase_trace_index: index },
+            });
+        }
+    }
+    const delays = options.data.filter(trace => trace.meta?.spinorama_group_delay);
+    let delayMin = 0;
+    let delayMax = 0;
+    for (const trace of delays) {
+        for (const value of trace.y) {
+            if (!Number.isFinite(value)) continue;
+            delayMin = Math.min(delayMin, value);
+            delayMax = Math.max(delayMax, value);
+        }
+    }
+    // Round outward to readable bounds, including negative group delay when present.
+    const span = delayMax - delayMin || 1;
+    const step = 10 ** Math.floor(Math.log10(span / 4));
+    delayMin = Math.floor(delayMin / step) * step;
+    delayMax = Math.ceil((delayMax || (delayMin === 0 ? 1 : 0)) / step) * step;
+    const formatDelay = value => Number(value.toPrecision(6)).toString();
+    const delayLabel = `Group Delay (${formatDelay(delayMin)}–${formatDelay(delayMax)} ms)`;
+    for (const trace of delays) trace.name = trace.name.replace('Group Delay (ms)', delayLabel);
+    // Overlay axes span the full plot. Doubling their range reserves the upper
+    // half for SPL while the labeled phase and delay intervals occupy the bottom half.
+    options.layout.yaxis3 = { overlaying: 'y', anchor: 'x', visible: false,
+        showgrid: false, zeroline: false, autorange: false, fixedrange: true,
+        range: [delayMin, delayMin + 2 * (delayMax - delayMin)] };
+    const axis = options.layout.yaxis2 || { overlaying: 'y', side: 'right', anchor: 'x' };
+    options.layout.yaxis2 = axis;
+    // The SPL axis owns horizontal gridlines; phase uses a different scale.
+    axis.showgrid = false;
+    axis.zeroline = false;
+    axis.minor = { ...axis.minor, showgrid: false };
+    if (wrap) {
+        axis.range = [-180, 540];
+        axis.autorange = false;
+        axis.tickvals = Array.from({ length: 13 }, (_, i) => -180 + 30 * i);
+        axis.ticktext = axis.tickvals.map((value) => value <= 180 ? value + '°' : '');
+        axis.dtick = 30;
+    } else {
+        let min = Infinity;
+        let max = -Infinity;
+        for (const trace of traces) {
+            for (const value of trace.y) {
+                if (!Number.isFinite(value)) continue;
+                min = Math.min(min, value);
+                max = Math.max(max, value);
+            }
+        }
+        if (!Number.isFinite(min)) { min = -180; max = 180; }
+        const padding = (max - min || 360) * 0.05;
+        min -= padding;
+        max += padding;
+        axis.range = [min, min + 2 * (max - min)];
+        delete axis.tickvals;
+        delete axis.ticktext;
+        delete axis.dtick;
+        axis.autorange = false;
+    }
+    const missing = traces.some((trace) => trace.meta.spinorama_phase.delay_seconds == null);
+    let title = 'Phase (deg)';
+    if (removeDelay) {
+        if (missing) title = 'Phase (deg; delay unavailable for some measurements)';
+        else if (traces.length === 1) title = `Phase (deg; ${(traces[0].meta.spinorama_phase.delay_seconds * 1000).toFixed(2)} ms delay removed)`;
+        else title = 'Phase (deg; delays removed individually)';
+    }
+    axis.title = { ...(typeof axis.title === 'object' ? axis.title : {}), text: title };
+    return options;
+}
+
+const phaseControls = new WeakMap();
+
+// Use a sibling of the Plotly element: Plotly owns and replaces its contents.
+export function initPhaseControls(target, options) {
+    if (!target) return;
+    let controls = phaseControls.get(target);
+    const available = !!options?.data?.some((trace) => trace.meta?.spinorama_phase);
+    if (!available) {
+        if (controls) controls.container.style.display = 'none';
+        return;
+    }
+    if (!controls) {
+        const container = document.createElement('div');
+        container.className = 'phase-controls';
+        container.style.cssText = 'display:flex; flex-wrap:wrap; gap:0.75rem; align-items:center; border:0; padding:0.4rem 0;';
+        container.setAttribute('role', 'group');
+        container.setAttribute('aria-label', 'On Axis phase and group delay');
+        controls = { container };
+        for (const [key, text] of [['show', 'Phase'], ['wrap', 'wrap'], ['removeDelay', 'remove delay'], ['groupDelay', 'Group Delay']]) {
+            const label = document.createElement('label');
+            label.className = 'checkbox';
+            label.style.whiteSpace = 'nowrap';
+            const input = document.createElement('input');
+            input.type = 'checkbox';
+            input.dataset.phaseOption = key;
+            label.append(document.createTextNode(text + ' '), input);
+            container.appendChild(label);
+            controls[key] = input;
+            input.addEventListener('change', () => {
+                const config = loadConfigFromStorage();
+                config.phase[key] = input.checked;
+                dispatchConfigChange(config);
+            });
+        }
+        target.before(container);
+        phaseControls.set(target, controls);
+        window.addEventListener('spinorama-config-change', (event) => {
+            const phase = event.detail?.phase || loadConfigFromStorage().phase;
+            controls.show.checked = phase.show !== false;
+            controls.groupDelay.checked = phase.groupDelay !== false;
+            controls.wrap.checked = phase.wrap !== false;
+            controls.removeDelay.checked = phase.removeDelay !== false;
+        });
+    }
+    controls.container.style.display = 'flex';
+    const config = loadConfigFromStorage();
+    controls.show.checked = config.phase.show !== false;
+    controls.groupDelay.checked = config.phase.groupDelay !== false;
+    controls.wrap.checked = config.phase.wrap !== false;
+    controls.removeDelay.checked = config.phase.removeDelay !== false;
+}
+
+// Apply configuration to plot options, treating config values as deltas
+export function applyConfig(options, config) {
+    if (!options || !config) return options;
+
+    // Remove old markers before assigning palette colors to the source traces.
+    if (options.data) options.data = options.data.filter((trace) => !trace.meta?.spinorama_phase_jump && !trace.meta?.spinorama_group_delay);
+
+    // Build font configuration object from config
+    const fontConfig = {};
+    if (config.font) {
+        if (config.font.family && config.font.family !== 'default') {
+            fontConfig.family = config.font.family;
+        }
+        if (config.font.color && config.font.color !== 'default') {
+            fontConfig.color = config.font.color;
+        }
+        if (config.font.size && typeof config.font.size === 'number' && config.font.size !== 0) {
+            // Note: font size will be applied as deltas in the specific axis handling below
+        }
+    }
+
+    // Apply options to layout if it exists
+    if (options.layout) {
+        const layout = options.layout;
+
+        // Apply font to layout
+        if (Object.keys(fontConfig).length > 0 || (config.font && config.font.size !== 0)) {
+            [layout, layout.xaxis, layout.yaxis, layout.zaxis, layout.legend].forEach((axis) => {
+                if (axis?.title?.font) {
+                    if (config.font) {
+                        if (config.font.size && typeof config.font.size === 'number') {
+                            if (axis.title.font.size) {
+                                axis.title.font.size += config.font.size;
+                            }
+                        }
+                        if (config.font.family && config.font.family !== 'default') {
+                            axis.title.font.family = config.font.family;
+                        }
+                        if (config.font.color && config.font.color !== 'default') {
+                            axis.title.font.color = config.font.color;
+                        }
+                    }
+                }
+            });
+        }
+
+        // Apply theme (light/dark) to graph backgrounds and colors
+        if (config.theme && config.theme !== 'default') {
+            switch (config.theme) {
+                case 'light': {
+                    const fg = '#1b1b21';
+                    layout.paper_bgcolor = '#faf8ff';
+                    layout.plot_bgcolor = '#faf8ff';
+                    if (!layout.font) layout.font = {};
+                    layout.font.color = fg;
+                    // Force title color (Plotly default may not inherit from layout.font)
+                    if (layout.title) {
+                        if (!layout.title.font) layout.title.font = {};
+                        layout.title.font.color = fg;
+                    }
+                    ['xaxis', 'yaxis', 'yaxis2', 'zaxis'].forEach((axis) => {
+                        if (layout[axis]) {
+                            // Major grid: darker so 5 dB lines stand out
+                            layout[axis].gridcolor = 'rgba(0,0,0,0.22)';
+                            layout[axis].linecolor = '#45464f';
+                            layout[axis].zerolinecolor = '#767680';
+                            if (layout[axis].minor) {
+                                // Minor grid: lighter so 1 dB lines are visible but subordinate
+                                layout[axis].minor.gridcolor = 'rgba(0,0,0,0.07)';
+                            }
+                            // Tick and axis title text colors
+                            if (layout[axis].tickfont) layout[axis].tickfont.color = fg;
+                            else layout[axis].tickfont = { color: fg };
+                            if (layout[axis].title) {
+                                if (!layout[axis].title.font) layout[axis].title.font = {};
+                                layout[axis].title.font.color = fg;
+                            }
+                        }
+                    });
+                    break;
+                }
+                case 'dark': {
+                    const fg = '#e3e1e9';
+                    layout.paper_bgcolor = '#131318';
+                    layout.plot_bgcolor = '#1f1f25';
+                    if (!layout.font) layout.font = {};
+                    layout.font.color = fg;
+                    if (layout.title) {
+                        if (!layout.title.font) layout.title.font = {};
+                        layout.title.font.color = fg;
+                    }
+                    ['xaxis', 'yaxis', 'yaxis2', 'zaxis'].forEach((axis) => {
+                        if (layout[axis]) {
+                            // Major grid: brighter so 5 dB lines stand out
+                            layout[axis].gridcolor = 'rgba(255,255,255,0.22)';
+                            layout[axis].linecolor = '#c6c5d0';
+                            layout[axis].zerolinecolor = '#45464f';
+                            if (layout[axis].minor) {
+                                // Minor grid: dimmer so 1 dB lines are subordinate
+                                layout[axis].minor.gridcolor = 'rgba(255,255,255,0.07)';
+                            }
+                            if (layout[axis].tickfont) layout[axis].tickfont.color = fg;
+                            else layout[axis].tickfont = { color: fg };
+                            if (layout[axis].title) {
+                                if (!layout[axis].title.font) layout[axis].title.font = {};
+                                layout[axis].title.font.color = fg;
+                            }
+                        }
+                    });
+                    break;
+                }
+            }
+        }
+
+        // Enforce plot borders on SPL vs frequency graphs (not contour/radar/globe)
+        var gt = options._graphType;
+        var isSplGraph = !gt || (gt.isGraph && !gt.isSurface && !gt.isRadar && !gt.isGlobe);
+        if (isSplGraph && (gt?.isGraph || /SPL/i.test(layout.yaxis?.title?.text || ''))) {
+            const axis = layout.yaxis;
+            if (Array.isArray(axis?.range) && axis.range.every(Number.isFinite)) {
+                const selectedSpan = Number.parseInt(config.layout?.splRange, 10);
+                const span = [20, 30, 40, 50].includes(selectedSpan) ? selectedSpan : 50;
+                const top = axis.range[1];
+                axis.range = [top - span, top];
+                axis.autorange = false;
+                // CEA2034's DI shares the dB scale but is anchored at the bottom.
+                // Leave phase (degrees) and other secondary scales alone.
+                if (gt?.isSpin && Array.isArray(layout.yaxis2?.range)) {
+                    const bottom = layout.yaxis2.range[0];
+                    layout.yaxis2.range = [bottom, bottom + span];
+                    layout.yaxis2.autorange = false;
+                }
+                // Compact layouts include the SPL bounds in the x-axis title.
+                if (layout.xaxis?.title?.text) {
+                    layout.xaxis.title = { ...layout.xaxis.title,
+                        text: layout.xaxis.title.text.replace(/SPL \(dB \[[^\]]+\]/,
+                            `SPL (dB [${top - span}, ${top}]`) };
+                }
+            }
+        }
+        if (isSplGraph) {
+            var borderColor = config.theme === 'dark' ? '#c6c5d0' : '#45464f';
+            ['xaxis', 'yaxis', 'yaxis2'].forEach(function (ax) {
+                if (layout[ax]) {
+                    layout[ax].showline = true;
+                    layout[ax].linewidth = 1;
+                    layout[ax].linecolor = borderColor;
+                    layout[ax].mirror = true;
+                }
+            });
+            // Add explicit border rectangle to guarantee all 4 edges are visible.
+            // Use 'x domain' / 'y domain' references so the rect follows the actual
+            // plot area (including when yaxis2 side='right' reserves extra margin).
+            var borderShape = {
+                type: 'rect',
+                xref: 'x domain',
+                yref: 'y domain',
+                x0: 0,
+                y0: 0,
+                x1: 1,
+                y1: 1,
+                line: { color: borderColor, width: 1 },
+            };
+            if (!layout.shapes) layout.shapes = [];
+            layout.shapes.push(borderShape);
+        }
+
+        // Apply margins as deltas to existing margins
+        if (config.margins) {
+            if (!layout.margin) {
+                layout.margin = {};
+            }
+            if (config.margins.l !== undefined) {
+                layout.margin.l = (layout.margin.l || 0) + config.margins.l;
+            }
+            if (config.margins.r !== undefined) {
+                layout.margin.r = (layout.margin.r || 0) + config.margins.r;
+            }
+            if (config.margins.t !== undefined) {
+                layout.margin.t = (layout.margin.t || 0) + config.margins.t;
+            }
+            if (config.margins.b !== undefined) {
+                layout.margin.b = (layout.margin.b || 0) + config.margins.b;
+            }
+            if (config.margins.pad !== undefined) {
+                layout.margin.pad = (layout.margin.pad || 0) + config.margins.pad;
+            }
+        }
+
+        // Apply legend configuration
+        if (config.legend) {
+            if (!layout.legend) {
+                layout.legend = {};
+            }
+
+            // Only force legend on if the graph didn't explicitly disable it (e.g. contour plots)
+            if (config.legend.show !== undefined && layout.showlegend !== false) {
+                layout.showlegend = config.legend.show;
+            }
+
+            // Apply legend position
+            if (config.legend.position && config.legend.position !== 'default') {
+                switch (config.legend.position) {
+                    case 'top':
+                        layout.legend.x = 0.5;
+                        layout.legend.y = 1.0;
+                        layout.legend.xanchor = 'center';
+                        layout.legend.yanchor = 'bottom';
+                        layout.legend.orientation = 'h';
+                        break;
+                    case 'right':
+                        layout.legend.x = 1.0;
+                        layout.legend.y = 1.0;
+                        layout.legend.xanchor = 'left';
+                        layout.legend.yanchor = 'auto';
+                        layout.legend.orientation = 'v';
+                        break;
+                    case 'bottom':
+                        layout.legend.x = 0.5;
+                        layout.legend.y = -0.1;
+                        layout.legend.xanchor = 'center';
+                        layout.legend.yanchor = 'top';
+                        layout.legend.orientation = 'h';
+                        break;
+                    case 'left':
+                        layout.legend.x = 0.0;
+                        layout.legend.y = 1.0;
+                        layout.legend.xanchor = 'right';
+                        layout.legend.yanchor = 'auto';
+                        layout.legend.orientation = 'v';
+                        break;
+                }
+            }
+
+            // Apply legend offset as deltas
+            if (config.legend.xoffset !== undefined && config.legend.xoffset !== 0) {
+                if (layout.legend.x === undefined) layout.legend.x = 0;
+                layout.legend.x += config.legend.xoffset;
+            }
+
+            if (config.legend.yoffset !== undefined && config.legend.yoffset !== 0) {
+                if (layout.legend.y === undefined) layout.legend.y = 0;
+                layout.legend.y += config.legend.yoffset;
+            }
+
+            // Apply legend font
+            if (Object.keys(fontConfig).length > 0) {
+                if (!layout.legend.font) layout.legend.font = {};
+                layout.legend.font = { ...layout.legend.font, ...fontConfig };
+            }
+        }
+
+        // Apply grid configuration
+        if (config.grid) {
+            const axes = ['xaxis', 'yaxis', 'zaxis'];
+            axes.forEach((axis) => {
+                if (layout[axis]) {
+                    if (config.grid.show !== undefined) {
+                        layout[axis].showgrid = config.grid.show;
+                    }
+                    if (config.grid.color && config.grid.color !== 'default') {
+                        layout[axis].gridcolor = config.grid.color;
+                    }
+                }
+            });
+        }
+
+        // Apply axis labels
+        if (config.showAxisLabels !== undefined) {
+            ['xaxis', 'yaxis', 'zaxis'].forEach((axis) => {
+                if (layout[axis]) {
+                    layout[axis].showticklabels = config.showAxisLabels;
+                }
+            });
+        }
+    }
+
+    // Apply annotation visibility
+    if (config.annotations) {
+        if (options.layout && options.layout.annotations) {
+            for (const ann of options.layout.annotations) {
+                // The Python annotation layout solver can suppress a label
+                // when the plot is too crowded to place it readably. Keep
+                // that decision authoritative even when the user enables all
+                // annotations through the configuration panel.
+                if (typeof ann.name === 'string' && ann.name.startsWith('layout-hidden:')) {
+                    ann.visible = false;
+                    continue;
+                }
+                // Per-speaker annotation visibility (annotations have no legendgroup,
+                // so we use showA/showB as a combined toggle in compare mode)
+                if (ann._speakerIndex === 1 && config.annotations.showB !== undefined) {
+                    ann.visible = config.annotations.showB;
+                } else if (ann._speakerIndex === 0 && config.annotations.showA !== undefined) {
+                    ann.visible = config.annotations.showA;
+                } else if (config.annotations.show !== undefined) {
+                    ann.visible = config.annotations.show;
+                }
+            }
+        }
+    }
+
+    // Apply to data traces if they exist
+    if (options.data && Array.isArray(options.data)) {
+        // Pre-compute flags to skip unnecessary work inside the trace loop
+        const hasFontConfig = Object.keys(fontConfig).length > 0;
+        const hasColorbar =
+            config.colorbar && (config.colorbar.thickness || config.colorbar.len || config.colorbar.show !== undefined);
+        const hasLegendConfig = !!config.legend;
+        const legendLabel = config.legend?.label;
+        const hasLegendLabel = legendLabel && legendLabel !== 'default';
+        const hasTrendlines = !!config.trendlines;
+        const hasZones = !!config.zones;
+        const legendFontSize = options.layout?.legend?.font?.size;
+
+        // Auto-select dark palette when in dark theme and user hasn't chosen one
+        if (config.theme === 'dark' && config.colors && (!config.colors.palette || config.colors.palette === 'default')) {
+            config.colors.palette = 'dark';
+        }
+        const applyPalette = config.colors?.palette && config.colors.palette !== 'default';
+        const selectedPalette = applyPalette ? colorPalettes[config.colors.palette] || colorPalettes.default : null;
+        const applyColorscale = config.contour?.colorscale && config.contour.colorscale !== 'default';
+        const selectedColorscale = applyColorscale
+            ? contourColorscales[config.contour.colorscale] || contourColorscales.default
+            : null;
+
+        // Single pass over all traces
+        for (let index = 0; index < options.data.length; index++) {
+            const trace = options.data[index];
+
+            // Colorbar
+            if (hasColorbar && trace.colorbar) {
+                if (config.colorbar.thickness)
+                    trace.colorbar.thickness = (trace.colorbar.thickness || 0) + config.colorbar.thickness;
+                if (config.colorbar.len) trace.colorbar.len = (trace.colorbar.len || 0) + config.colorbar.len;
+                if (config.colorbar.show !== undefined) trace.colorbar.visible = config.colorbar.show;
+            }
+
+            // Font overrides (rare)
+            if (hasFontConfig) {
+                if (trace.marker?.textfont) trace.marker.textfont = { ...trace.marker.textfont, ...fontConfig };
+                if (trace.hoverlabel?.font) trace.hoverlabel.font = { ...trace.hoverlabel.font, ...fontConfig };
+            }
+
+            // Legend show/hide and label format
+            if (hasLegendConfig) {
+                if (config.legend.show !== undefined && trace.showlegend !== false) {
+                    trace.showlegend = config.legend.show;
+                }
+                if (hasLegendLabel && trace.name) {
+                    trace._fullName = trace.name;
+                    if (legendLabel === 'short') {
+                        trace.name = labelShort[trace._fullName] || trace.name;
+                    } else if (legendLabel === 'long') {
+                        trace.name = labelLong[trace._fullName] || trace.name;
+                    }
+                }
+            }
+
+            // Trendline visibility (Set.has is O(1) vs Array.includes O(N))
+            if (hasTrendlines && trace.name) {
+                if (trendNames.has(trace.name) || trace.name.endsWith(' slope')) {
+                    if (trace.legendgroup === 'speaker1' && config.trendlines.showB !== undefined) {
+                        trace.visible = config.trendlines.showB;
+                    } else if (trace.legendgroup === 'speaker0' && config.trendlines.showA !== undefined) {
+                        trace.visible = config.trendlines.showA;
+                    } else if (config.trendlines.show !== undefined) {
+                        trace.visible = config.trendlines.show;
+                    }
+                }
+            }
+
+            // Recommended zone visibility
+            if (hasZones && trace.name && trace.name.startsWith('recommended ')) {
+                if (trace.legendgroup === 'speaker1' && config.zones.showB !== undefined) {
+                    trace.visible = config.zones.showB;
+                } else if (trace.legendgroup === 'speaker0' && config.zones.showA !== undefined) {
+                    trace.visible = config.zones.showA;
+                } else if (config.zones.show !== undefined) {
+                    trace.visible = config.zones.show;
+                }
+            }
+
+            // Legend group title font
+            if (legendFontSize && trace.legendgrouptitle?.text) {
+                if (!trace.legendgrouptitle.font) trace.legendgrouptitle.font = {};
+                if (!trace.legendgrouptitle.font.size || trace.legendgrouptitle.font.size < legendFontSize) {
+                    trace.legendgrouptitle.font.size = legendFontSize;
+                }
+            }
+
+            // Color palette (only if non-default)
+            if (selectedPalette && trace.type === 'scatter') {
+                const color = selectedPalette[index % selectedPalette.length];
+                if (trace.marker) trace.marker.color = color;
+                if (trace.line) trace.line.color = color;
+                if (!trace.marker && !trace.line) {
+                    trace.marker = { color };
+                    trace.line = { color };
+                }
+            }
+
+            // Colorscale (only if non-default)
+            if (
+                selectedColorscale &&
+                (trace.type === 'contour' || trace.type === 'heatmap' || trace.type === 'surface' || trace.type === 'contourgl')
+            ) {
+                trace.colorscale = selectedColorscale;
+            }
+        }
+    }
+
+    // Create wrap markers after palette/theme overrides so colors match exactly.
+    applyPhaseOptions(options, config.phase);
+
+    // Apply layout direction for multiple graphs only if not default
+    if (config.layout && config.layout.direction && config.layout.direction !== 'default') {
+        options._layoutDirection = config.layout.direction;
+    }
+
+    return options;
+}
+
+// Legacy per-graph config menu — now a no-op (config lives in the global navbar panel)
+export function createConfigMenu(_divName, _config, _updateCallback, _menuOptions) {
+    return;
+}
+
+// Notify all listeners that global config changed
+export function dispatchConfigChange(config) {
+    saveConfigToStorage(config);
+    window.dispatchEvent(new CustomEvent('spinorama-config-change', { detail: config }));
+}
+
+// Initialize the global config panel inside #global-config-panel in the navbar
+export function initGlobalConfigPanel(config) {
+    const panel = document.getElementById('global-config-panel');
+    if (!panel || panel.dataset.initialized) {
+        return;
+    }
+    panel.dataset.initialized = 'true';
+    if (!config.phase) config.phase = { wrap: true, removeDelay: true };
+
+    const updateCallback = (updatedConfig) => dispatchConfigChange(updatedConfig);
+    const menuOptions = {};
+
+    // Build config UI directly inside the global panel
+    const configPanel = document.createElement('div');
+    configPanel.className = 'plot-config-inner';
+    panel.appendChild(configPanel);
+
+    // Create group sections — flat layout, no accordion
+    function createGroupSection(title) {
+        const section = document.createElement('div');
+        section.className = 'plot-config-section';
+
+        const heading = document.createElement('div');
+        heading.className = 'config-label';
+        heading.textContent = title;
+        section.appendChild(heading);
+
+        const contentArea = document.createElement('div');
+        contentArea.className = 'section-content';
+
+        const flexContainer = document.createElement('div');
+        flexContainer.className = 'config-flex-container';
+        contentArea.appendChild(flexContainer);
+        section.appendChild(contentArea);
+
+        // Override appendChild to route into flexContainer
+        const originalAppendChild = section.appendChild.bind(section);
+        section.appendChild = function (element) {
+            if (element !== heading && element !== contentArea && element !== flexContainer) {
+                return flexContainer.appendChild(element);
+            }
+            return originalAppendChild(element);
+        };
+
+        return section;
+    }
+
+    // Fonts section
+    const themeSection = createGroupSection('Fonts');
+
+    themeSection.appendChild(
+        createFormGroup(
+            'Font Family',
+            'select',
+            config.font.family,
+            'config-font-family',
+            [
+                'Arial, sans-serif',
+                'Helvetica, Arial, sans-serif',
+                'Georgia, serif',
+                'Times New Roman, serif',
+                'Courier New, monospace',
+            ],
+            (e) => {
+                config.font.family = e.target.value;
+                updateCallback(config);
+            }
+        )
+    );
+
+    themeSection.appendChild(
+        createFormGroup('Font Size', 'number', config.font.size, 'config-font-size', { min: -6, max: 6, step: 1 }, (e) => {
+            config.font.size = parseInt(e.target.value);
+            updateCallback(config);
+        })
+    );
+
+    themeSection.appendChild(
+        createFormGroup('Font Color', 'color', config.font.color, 'config-font-color', null, (e) => {
+            config.font.color = e.target.value;
+            updateCallback(config);
+        })
+    );
+
+    // Layout section
+    const layoutSection = createGroupSection('Layout & Grid');
+
+    layoutSection.appendChild(
+        createFormGroup('Show Grid', 'checkbox', config.grid.show, 'config-grid', null, (e) => {
+            config.grid.show = e.target.checked;
+            updateCallback(config);
+        })
+    );
+
+    // Fix layout direction selector
+    const layoutDirectionGroup = document.createElement('div');
+    layoutDirectionGroup.className = 'form-group field';
+    layoutDirectionGroup.style.cssText = `width: 100%;`;
+
+    const layoutLabel = document.createElement('label');
+    layoutLabel.className = 'label is-small';
+    layoutLabel.textContent = 'Layout Direction';
+    layoutDirectionGroup.appendChild(layoutLabel);
+
+    const selectWrapper = document.createElement('div');
+    selectWrapper.className = 'select is-small is-fullwidth';
+
+    const layoutSelect = document.createElement('select');
+    layoutSelect.id = 'config-layout-direction';
+    layoutSelect.name = 'config-layout-direction';
+
+    const options = [
+        { value: 'horizontal', text: 'Horizontal (Side by Side)' },
+        { value: 'vertical', text: 'Vertical (Top to Bottom)' },
+    ];
+
+    options.forEach((option) => {
+        const optElement = document.createElement('option');
+        optElement.value = option.value;
+        optElement.textContent = option.text;
+        optElement.selected = option.value === config.layout.direction;
+        layoutSelect.appendChild(optElement);
+    });
+
+    layoutSelect.addEventListener('change', (e) => {
+        config.layout.direction = e.target.value;
+        updateCallback(config);
+    });
+
+    selectWrapper.appendChild(layoutSelect);
+
+    const controlDiv = document.createElement('div');
+    controlDiv.className = 'control';
+    controlDiv.style.cssText = 'display: flex; align-items: center;';
+    controlDiv.appendChild(selectWrapper);
+
+    layoutDirectionGroup.appendChild(controlDiv);
+    layoutSection.appendChild(layoutDirectionGroup);
+
+    layoutSection.appendChild(createFormGroup(
+        'SPL Vertical Range', 'select', config.layout.splRange || '50 dB',
+        'config-spl-range', ['20 dB', '30 dB', '40 dB', '50 dB'], (event) => {
+            config.layout.splRange = event.target.value;
+            updateCallback(config);
+        }
+    ));
+
+    // Legend section
+    const legendSection = createGroupSection('Legend');
+
+    legendSection.appendChild(
+        createFormGroup('Show Legend', 'checkbox', config.legend.show, 'config-legend-show', null, (e) => {
+            config.legend.show = e.target.checked;
+            updateCallback(config);
+        })
+    );
+
+    legendSection.appendChild(
+        createFormGroup(
+            'Legend Position',
+            'select',
+            config.legend.position,
+            'config-legend-position',
+            ['default', 'top', 'right', 'bottom', 'left'],
+            (e) => {
+                config.legend.position = e.target.value;
+                updateCallback(config);
+            }
+        )
+    );
+
+    // Add legend label format options
+    legendSection.appendChild(
+        createFormGroup(
+            'Label Format',
+            'select',
+            config.legend.label,
+            'config-legend-label',
+            ['default', 'short', 'long'],
+            (e) => {
+                config.legend.label = e.target.value;
+                updateCallback(config);
+            }
+        )
+    );
+
+    // Add legend position adjustment sliders
+    const createLegendOffsetSlider = (axis, label) => {
+        const sliderGroup = document.createElement('div');
+        sliderGroup.className = 'form-group field';
+        sliderGroup.style.cssText = `width: 100%;`;
+
+        const sliderLabel = document.createElement('label');
+        sliderLabel.className = 'label is-small';
+        sliderLabel.textContent = `${label} Offset`;
+        sliderGroup.appendChild(sliderLabel);
+
+        const sliderContainer = document.createElement('div');
+        sliderContainer.className = 'control';
+        sliderContainer.style.cssText = `
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        `;
+
+        // Create slider input for incremental adjustments
+        const sliderInput = document.createElement('input');
+        sliderInput.type = 'range';
+        sliderInput.min = '-100';
+        sliderInput.max = '100';
+        sliderInput.step = '1';
+        sliderInput.value = Math.round(config.legend[axis + 'offset'] * 100); // Convert from -1.0...1.0 to -100...100
+        sliderInput.id = `config-legend-offset-${axis}`;
+        sliderInput.style.cssText = `
+            flex-grow: 1;
+            height: 8px;
+        `;
+
+        // Value display
+        const valueDisplay = document.createElement('span');
+        valueDisplay.textContent = config.legend[axis + 'offset'].toFixed(2);
+        valueDisplay.style.cssText = `
+            min-width: 40px;
+            text-align: right;
+            font-size: 0.8rem;
+        `;
+
+        // Update handler
+        sliderInput.addEventListener('input', (e) => {
+            const sliderValue = parseInt(e.target.value);
+            const offsetValue = sliderValue / 100; // Convert slider value to offset (-1.0 to 1.0)
+            config.legend[axis + 'offset'] = offsetValue;
+            valueDisplay.textContent = offsetValue.toFixed(2);
+            updateCallback(config);
+        });
+
+        sliderContainer.appendChild(sliderInput);
+        sliderContainer.appendChild(valueDisplay);
+        sliderGroup.appendChild(sliderContainer);
+
+        return sliderGroup;
+    };
+
+    // Add X and Y offset sliders
+    legendSection.appendChild(createLegendOffsetSlider('x', 'Horizontal'));
+    legendSection.appendChild(createLegendOffsetSlider('y', 'Vertical'));
+
+    // Margin section
+    const marginSection = createGroupSection('Margins');
+
+    // Replace margin number inputs with sliders
+    ['l', 'r', 't', 'b'].forEach((side) => {
+        const labels = { l: 'Left', r: 'Right', t: 'Top', b: 'Bottom' };
+
+        const marginGroup = document.createElement('div');
+        marginGroup.className = 'form-group field';
+        marginGroup.style.cssText = `width: 100%;`;
+
+        const marginLabel = document.createElement('label');
+        marginLabel.className = 'label is-small';
+        marginLabel.textContent = `${labels[side]} Margin`;
+        marginGroup.appendChild(marginLabel);
+
+        const sliderContainer = document.createElement('div');
+        sliderContainer.className = 'control';
+        sliderContainer.style.cssText = `
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        `;
+
+        // Create slider input
+        const sliderInput = document.createElement('input');
+        sliderInput.type = 'range';
+        sliderInput.min = '0';
+        sliderInput.max = '200';
+        sliderInput.step = '5';
+        sliderInput.value = config.margins[side] > 200 ? 200 : config.margins[side];
+        sliderInput.id = `config-margin-${side}`;
+        sliderInput.style.cssText = `
+            flex-grow: 1;
+            height: 8px;
+        `;
+
+        // Value display
+        const valueDisplay = document.createElement('span');
+        valueDisplay.textContent = config.margins[side];
+        valueDisplay.style.cssText = `
+            min-width: 30px;
+            text-align: right;
+            font-size: 0.8rem;
+        `;
+
+        // Update handler
+        sliderInput.addEventListener('input', (e) => {
+            const value = parseInt(e.target.value);
+            config.margins[side] = value;
+            valueDisplay.textContent = value;
+        });
+
+        sliderInput.addEventListener('change', () => {
+            updateCallback(config);
+        });
+
+        sliderContainer.appendChild(sliderInput);
+        sliderContainer.appendChild(valueDisplay);
+        marginGroup.appendChild(sliderContainer);
+        marginSection.appendChild(marginGroup);
+    });
+
+    // Colors section
+    const colorsSection = createGroupSection('Colors');
+
+    // Both color selectors use named rows of swatches, with no text input.
+    function createColorChoices(label, choices, selected, optionClass, onSelect) {
+        const group = document.createElement('div');
+        group.className = 'form-group field';
+        const heading = document.createElement('div');
+        heading.className = 'label is-small';
+        heading.textContent = label;
+        group.appendChild(heading);
+
+        const container = document.createElement('div');
+        container.className = 'control color-choices';
+        group.appendChild(container);
+
+        for (const [name, colors] of Object.entries(choices)) {
+            const row = document.createElement('button');
+            row.type = 'button';
+            row.className = `color-choice ${optionClass}`;
+            row.classList.toggle('selected', name === selected);
+            row.setAttribute('aria-pressed', String(name === selected));
+
+            const nameLabel = document.createElement('span');
+            nameLabel.className = 'color-choice-name';
+            nameLabel.textContent = name;
+            row.appendChild(nameLabel);
+
+            const swatches = document.createElement('span');
+            swatches.className = 'color-choice-swatches';
+            swatches.setAttribute('aria-hidden', 'true');
+            for (const color of colors) {
+                const swatch = document.createElement('span');
+                swatch.style.backgroundColor = color;
+                swatches.appendChild(swatch);
+            }
+            row.appendChild(swatches);
+            row.addEventListener('click', () => {
+                for (const option of container.children) {
+                    const active = option === row;
+                    option.classList.toggle('selected', active);
+                    option.setAttribute('aria-pressed', String(active));
+                }
+                onSelect(name);
+                updateCallback(config);
+            });
+            container.appendChild(row);
+        }
+        return group;
+    }
+
+    colorsSection.appendChild(createColorChoices(
+        'Color Palette', colorPalettes, config.colors.palette, 'palette-preview',
+        (name) => { config.colors.palette = name; }
+    ));
+    colorsSection.appendChild(createColorChoices(
+        'Contour Colorscale',
+        Object.fromEntries(Object.entries(contourColorscales).map(([name, scale]) => [name, scale.map(([, color]) => color)])),
+        config.contour.colorscale, 'colorscale-option',
+        (name) => { config.contour.colorscale = name; }
+    ));
+
+    // Create reset button with Bulma styling
+    const resetButton = document.createElement('button');
+    resetButton.textContent = 'Reset to Default';
+    resetButton.className = 'button is-small is-danger is-light reset-config-button';
+    resetButton.addEventListener('click', () => {
+        Object.assign(config, JSON.parse(JSON.stringify(defaultConfig)));
+        saveConfigToStorage(config); // Save the reset config
+        if (updateCallback) updateCallback(config);
+        // Refresh the page to apply the reset config
+        window.location.reload();
+    });
+
+    // Add sections to the config panel
+    // Colorbar section
+    const colorbarSection = createGroupSection('Colorbar');
+
+    colorbarSection.appendChild(
+        createFormGroup('Show Colorbar', 'checkbox', config.colorbar.show, 'config-colorbar-show', null, (e) => {
+            config.colorbar.show = e.target.checked;
+            updateCallback(config);
+        })
+    );
+
+    colorbarSection.appendChild(
+        createFormGroup(
+            'Thickness (px)',
+            'number',
+            config.colorbar.thickness,
+            'config-colorbar-thickness',
+            { min: 5, max: 100, step: 1 },
+            (e) => {
+                config.colorbar.thickness = parseInt(e.target.value);
+                updateCallback(config);
+            }
+        )
+    );
+
+    colorbarSection.appendChild(
+        createFormGroup(
+            'Length',
+            'number',
+            config.colorbar.len,
+            'config-colorbar-len',
+            { min: 0.1, max: 1.0, step: 0.1 },
+            (e) => {
+                config.colorbar.len = parseFloat(e.target.value);
+                updateCallback(config);
+            }
+        )
+    );
+
+    // Create annotations section
+    const annotationsSection = createGroupSection('Annotations & Trend Lines');
+
+    if (menuOptions && menuOptions.compareMode) {
+        // Per-speaker controls for compare mode
+        annotationsSection.appendChild(
+            createFormGroup('Annotations (A)', 'checkbox', config.annotations.showA, 'config-annotations-showA', null, (e) => {
+                config.annotations.showA = e.target.checked;
+                updateCallback(config);
+            })
+        );
+        annotationsSection.appendChild(
+            createFormGroup('Annotations (B)', 'checkbox', config.annotations.showB, 'config-annotations-showB', null, (e) => {
+                config.annotations.showB = e.target.checked;
+                updateCallback(config);
+            })
+        );
+        annotationsSection.appendChild(
+            createFormGroup('Trend Lines (A)', 'checkbox', config.trendlines.showA, 'config-trendlines-showA', null, (e) => {
+                config.trendlines.showA = e.target.checked;
+                updateCallback(config);
+            })
+        );
+        annotationsSection.appendChild(
+            createFormGroup('Trend Lines (B)', 'checkbox', config.trendlines.showB, 'config-trendlines-showB', null, (e) => {
+                config.trendlines.showB = e.target.checked;
+                updateCallback(config);
+            })
+        );
+        annotationsSection.appendChild(
+            createFormGroup('Recommended Zones (A)', 'checkbox', config.zones.showA, 'config-zones-showA', null, (e) => {
+                config.zones.showA = e.target.checked;
+                updateCallback(config);
+            })
+        );
+        annotationsSection.appendChild(
+            createFormGroup('Recommended Zones (B)', 'checkbox', config.zones.showB, 'config-zones-showB', null, (e) => {
+                config.zones.showB = e.target.checked;
+                updateCallback(config);
+            })
+        );
+    } else {
+        // Single speaker mode
+        annotationsSection.appendChild(
+            createFormGroup('Show Annotations', 'checkbox', config.annotations.show, 'config-annotations-show', null, (e) => {
+                config.annotations.show = e.target.checked;
+                updateCallback(config);
+            })
+        );
+        annotationsSection.appendChild(
+            createFormGroup('Show Trend Lines', 'checkbox', config.trendlines.show, 'config-trendlines-show', null, (e) => {
+                config.trendlines.show = e.target.checked;
+                updateCallback(config);
+            })
+        );
+        annotationsSection.appendChild(
+            createFormGroup('Show Recommended Zones', 'checkbox', config.zones.show, 'config-zones-show', null, (e) => {
+                config.zones.show = e.target.checked;
+                updateCallback(config);
+            })
+        );
+    }
+
+    const phaseSection = createGroupSection('On Axis Phase and Group Delay');
+    for (const [key, label, id] of [
+        ['show', 'Phase', 'config-phase-show'],
+        ['groupDelay', 'Group Delay', 'config-phase-group-delay'],
+        ['wrap', 'Wrap phase', 'config-phase-wrap'],
+        ['removeDelay', 'Remove delay', 'config-phase-remove-delay'],
+    ]) {
+        phaseSection.appendChild(createFormGroup(label, 'checkbox', config.phase[key], id, null, (event) => {
+            config.phase[key] = event.target.checked;
+            updateCallback(config);
+        }));
+    }
+    window.addEventListener('spinorama-config-change', (event) => {
+        if (!event.detail?.phase) return;
+        config.phase = { ...event.detail.phase };
+        for (const [key, id] of [['show', 'config-phase-show'], ['groupDelay', 'config-phase-group-delay']]) {
+            const input = phaseSection.querySelector(`[name="${id}"]`);
+            if (input) input.checked = config.phase[key] !== false;
+        }
+        const wrapInput = phaseSection.querySelector('[name="config-phase-wrap"]');
+        const delayInput = phaseSection.querySelector('[name="config-phase-remove-delay"]');
+        if (wrapInput) wrapInput.checked = config.phase.wrap !== false;
+        if (delayInput) delayInput.checked = config.phase.removeDelay !== false;
+    });
+
+    // Add all sections to the config panel
+    configPanel.appendChild(themeSection);
+    configPanel.appendChild(layoutSection);
+    configPanel.appendChild(marginSection);
+    configPanel.appendChild(legendSection);
+    configPanel.appendChild(colorsSection);
+    configPanel.appendChild(colorbarSection);
+    configPanel.appendChild(annotationsSection);
+    configPanel.appendChild(phaseSection);
+
+    // Add reset button at the bottom
+    const resetContainer = document.createElement('div');
+    resetContainer.style.cssText = `
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 20px;
+    `;
+
+    resetContainer.appendChild(resetButton);
+    configPanel.appendChild(resetContainer);
+}
+
+// Helper function to create form groups
+export function createFormGroup(label, type, value, name, options, onChange) {
+    let input, group, flexContainer;
+
+    group = document.createElement('div');
+    group.className = 'form-group field';
+
+    // Label with Bulma styling
+    if (label) {
+        const labelElement = document.createElement('label');
+        labelElement.className = 'label is-small';
+        labelElement.textContent = label;
+        group.appendChild(labelElement);
+    }
+
+    // Container for inputs with Bulma control class
+    flexContainer = document.createElement('div');
+    flexContainer.className = 'control';
+    flexContainer.style.cssText = `
+        display: flex;
+        align-items: center;
+    `;
+    group.appendChild(flexContainer);
+
+    if (type === 'select') {
+        // Create a Bulma select wrapper
+        const selectWrapper = document.createElement('div');
+        selectWrapper.className = 'select is-small is-fullwidth';
+        flexContainer.appendChild(selectWrapper);
+
+        input = document.createElement('select');
+        input.name = name || label.toLowerCase().replace(/\s+/g, '');
+
+        // Add options
+        options.forEach((option) => {
+            const optionElement = document.createElement('option');
+            optionElement.value = option;
+            optionElement.textContent = option;
+            optionElement.selected = option === value;
+            input.appendChild(optionElement);
+        });
+
+        selectWrapper.appendChild(input);
+    } else if (type === 'checkbox') {
+        // Create a Bulma checkbox wrapper
+        const checkWrapper = document.createElement('label');
+        checkWrapper.className = 'checkbox';
+
+        input = document.createElement('input');
+        input.type = 'checkbox';
+        input.name = name || label.toLowerCase().replace(/\s+/g, '');
+        input.checked = value;
+        input.style.cssText = 'margin-right: 8px;';
+
+        checkWrapper.appendChild(input);
+        // Keep the same label row as every other control.
+        input.id = input.name;
+        const labelElement = group.querySelector('label');
+        if (labelElement) labelElement.htmlFor = input.id;
+
+        flexContainer.appendChild(checkWrapper);
+    } else if (type === 'number') {
+        input = document.createElement('input');
+        input.type = 'number';
+        input.className = 'input is-small';
+        input.name = name;
+        input.id = name;
+        input.value = value;
+        if (options) {
+            if (options.min !== undefined) input.min = options.min;
+            if (options.max !== undefined) input.max = options.max;
+            if (options.step !== undefined) input.step = options.step;
+        }
+    } else if (type === 'color') {
+        input = document.createElement('input');
+        input.type = 'color';
+        input.className = 'input is-small';
+        input.name = name || label.toLowerCase().replace(/\s+/g, '');
+        input.value = value;
+        input.style.cssText = `
+            width: 40px;
+            padding: 0;
+            cursor: pointer;
+        `;
+
+        const colorPreview = document.createElement('div');
+        colorPreview.style.cssText = `
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            background-color: ${value};
+            border: 1px solid #ddd;
+            margin-left: 8px;
+            vertical-align: middle;
+        `;
+
+        input.addEventListener('input', (e) => {
+            colorPreview.style.backgroundColor = e.target.value;
+        });
+
+        flexContainer.appendChild(input);
+        flexContainer.appendChild(colorPreview);
+    } else {
+        input = document.createElement('input');
+        input.type = type;
+        input.name = name;
+        input.id = name;
+        input.value = value;
+        input.style.cssText = `
+            width: 100%;
+            padding: 5px;
+            border: 1px solid rgb(221, 221, 221);
+            border-radius: 3px;
+        `;
+    }
+
+    if (onChange) {
+        input.addEventListener('change', onChange);
+    }
+
+    // Only append input directly if it's not already wrapped (select elements are wrapped)
+    if (type !== 'select' && type !== 'checkbox' && type !== 'color') {
+        flexContainer.appendChild(input);
+    }
+    return group;
+}

@@ -1,0 +1,14 @@
+EQ for Nexo PS8 computed from Vendors-Nexo data
+Preference Score 6.58 with EQ 7.00
+Generated from http://github.com/spinorama-org/spinorama/blob/develop/scripts/generate_peqs.py v0.26
+Dated: 2024-03-19-16:48:28
+
+Preamp: -3.3 dB
+
+Filter  1: ON PK Fc    58 Hz Gain +2.91 dB Q 2.37
+Filter  2: ON PK Fc    77 Hz Gain +2.05 dB Q 1.78
+Filter  3: ON PK Fc    92 Hz Gain -1.19 dB Q 0.94
+Filter  4: ON PK Fc   942 Hz Gain -0.33 dB Q 1.25
+Filter  5: ON PK Fc  2491 Hz Gain +0.43 dB Q 1.05
+Filter  6: ON PK Fc  7059 Hz Gain +0.08 dB Q 0.66
+Filter  7: ON PK Fc 16239 Hz Gain +1.94 dB Q 0.69

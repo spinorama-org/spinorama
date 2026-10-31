@@ -1,0 +1,75 @@
+---
+title: "Digitize a graph image"
+date: 2026-08-22
+abstract: >
+  Convert a published Spinorama image into numeric data with WebPlotDigitizer.
+---
+
+Digitization converts a graph image into numeric data that Spinorama can load,
+plot, and score. Use it when the original measurement files are unavailable.
+If raw files are available, prefer the native Klippel, Princeton, GLL, REW, or
+text workflow because it preserves more information.
+
+## Prepare a WebPlotDigitizer project
+
+The repository includes a [Spinorama template](data/template%20Spinorama.tar)
+with the expected dataset names and basic settings. WebPlotDigitizer projects
+are TAR archives, so use an archive tool that can replace a file without
+repacking it into a different format.
+
+1. Make a copy of the template.
+2. Rename the source image to `image.png`. Use the original-resolution image
+   whenever possible; avoid screenshots that have been scaled or recompressed.
+3. Replace the template's `image.png` with the source image.
+4. Open the modified archive in WebPlotDigitizer 4.2 or newer with **Load
+   Project**.
+
+## Calibrate the axes
+
+1. Select the existing `XY` calibration and delete it, or choose **Tweak
+   Calibration** if it already matches the image.
+2. Choose **Add Calibration**, **2D (X-Y) Plot**, and **Align Axes**.
+3. Select two reliable points on each axis. Avoid using a label or gridline
+   that is obscured; 10 kHz is often easier to identify than 20 kHz.
+4. Check the calibration with the zoomed cursor. A point near 1 kHz and 80 dB
+   is a useful sanity check for a typical Spinorama plot.
+
+If WebPlotDigitizer reports an **Uncalibrated Dataset** warning after the old
+calibration is removed, select the new `XY` axes in the dataset settings.
+
+## Extract the five curves
+
+The template uses the conventional curve names expected by the importers:
+
+- `On Axis`
+- `Listening Window`
+- `Early Reflections`
+- `Sound Power`
+- `Estimated In-Room Response`
+
+For each dataset:
+
+1. Erase the old mask and use **Pen** to draw a mask around the new curve.
+2. Run automatic extraction and adjust the color, distance, and delta-X/Y
+   settings if the result is incomplete.
+3. Remove obviously incorrect points.
+4. Add points at every visible peak and dip, especially on `On Axis` and
+   `Listening Window`.
+5. Do not invent data outside the reliable plotted range.
+
+Save the project as a `.tar` archive with a name such as
+`Brand Model source.tar`. Saving intermediate projects is encouraged.
+
+## Use the result
+
+For a one-off calculation, pass the directory containing the `.tar` project to
+[`compute_spin.py`](08_compute_spin.qmd):
+
+```{.shell}
+python scripts/compute_spin.py /path/to/Brand-Model --format webplotdigitizer
+```
+
+To add the result to the project database, place the source archive under
+`datas/measurements/<speaker>/<origin>/`, then add the matching measurement
+metadata with the [metadata manager](03_metadata.qmd). The metadata manager
+records the source and format; it does not perform the digitization itself.

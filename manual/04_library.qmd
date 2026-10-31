@@ -1,0 +1,133 @@
+---
+title: "Use the Spinorama Python library"
+date: 2026-08-22
+abstract: >
+  Load loudspeaker measurements, compute Spinorama curves and preference scores,
+  and create plots with Python.
+---
+
+This page is a compact Python tutorial for working with one measurement set.
+Run it from the repository root with the virtual environment and
+`PYTHONPATH=src` configured as described in [Install and run Spinorama](02_install.qmd).
+The examples are illustrative; code execution is disabled for the manual
+project.
+
+## Load a text measurement set
+
+The generic horizontal/vertical text loader expects files for the measured
+angles. A complete set normally contains 72 files: horizontal and vertical
+measurements at 10-degree increments from -170 to 180 degrees.
+
+```{python}
+from spinorama.constant_paths import DEFAULT_FREQ_RANGE, MEAN_MAX, MEAN_MIN
+from spinorama.load import filter_graphs
+from spinorama.loaders.spl_hv_txt import parse_graph_spl_hv_txt
+
+speaker = "Ascend Acoustics Sierra-2EX V2"
+directory = f"datas/measurements/{speaker}/vendor"
+
+_, spl_h = parse_graph_spl_hv_txt(directory, "H")
+_, spl_v = parse_graph_spl_hv_txt(directory, "V")
+
+measurements = filter_graphs(
+    speaker,
+    spl_h,
+    spl_v,
+    MEAN_MIN,
+    MEAN_MAX,
+    mformat="spl_hv_txt",
+    mdistance=1.0,
+)
+```
+
+::: {.callout-warning title="Version 2.0 import paths"}
+Version 2.0 removes the legacy flat modules. Replace `spinorama.load_*` with
+`spinorama.loaders.*`, `spinorama.compute_*` with `spinorama.compute.*`,
+`spinorama.filter_*` with `spinorama.filters.*`, and `spinorama.extract_*`
+with `spinorama.extract.*`.
+:::
+
+## Compute Spinorama curves
+
+```{python}
+from spinorama.compute.cea2034 import compute_cea2034, estimated_inroom_hv
+
+spin = compute_cea2034(
+    measurements.h_spl,
+    measurements.v_spl,
+)
+pir = estimated_inroom_hv(
+    measurements.h_spl,
+    measurements.v_spl,
+)
+```
+
+The resulting data include the on-axis response, listening window, early
+reflections, sound power, directivity indices, and predicted in-room response.
+The exact fields available depend on the input format and completeness of the
+measurement set.
+
+## Compute preference scores
+
+```{python}
+from spinorama.compute.scores import speaker_pref_rating
+from spinorama.misc import graph_melt
+
+scores = speaker_pref_rating(
+    graph_melt(spin),
+    graph_melt(pir),
+    rounded=True,
+)
+scores
+```
+
+Scores are derived from the measurement data and are not a substitute for
+listening, room evaluation, distortion measurements, or maximum-output data.
+Compare measurements of similar quality and processing before comparing
+scores.
+
+## Plot the results
+
+The on-axis phase plot defaults to wrapping phase into −180° to 180° after
+removing a delay estimated from the linear phase slope between 12 and 16 kHz.
+The axis title shows the estimated delay. If fewer than three valid samples
+are available in that band, the measured delay is retained and the title says
+so. This changes the plot only; the measurement data are not changed.
+
+On the website, the On Axis plot offers **Wrap phase** and **Remove delay**
+checkboxes. The same settings are available in the plot options menu and
+apply to On Axis plots in speaker, comparison, and similar-speaker views.
+Graphs must be regenerated to include the phase data needed by these controls.
+
+For Python callers, pass `phase_wrap=False` or `phase_remove_delay=False`
+in the plot parameters to change either behavior. These options are also
+accepted by `build_figures` in its parameters dictionary. When phase is
+already wrapped, unwrapping assumes adjacent samples differ by less than
+180°; large delays or sparse samples can make the estimate ambiguous.
+
+```{python}
+import spinorama.plot as plot
+
+plot_params = plot.plot_params_default.copy()
+plot_params.update(width=800, height=500, layout="compact")
+
+figure = plot.plot_spinorama(
+    spin=spin,
+    params=plot_params,
+    minmax_slopes=None,
+    is_normalized=False,
+    valid_freq_range=DEFAULT_FREQ_RANGE,
+)
+figure
+```
+
+Other plot helpers include:
+
+- `plot.plot_graph` for a single response;
+- `plot.plot_graph_flat` for a response with regression lines;
+- `plot.plot_graph_regression` for the predicted in-room response;
+- `plot.plot_contour` and `plot.plot_contour_3d` for directivity; and
+- `plot.plot_radar` for polar directivity views.
+
+For a ready-made command-line workflow that loads all supported formats and
+writes PNG and JSON files, use [Compute a Spinorama](08_compute_spin.qmd).

@@ -1,0 +1,11 @@
+node_modules
+docs
+bin
+build
+dist
+venv
+.venv
+.vscode
+.cache
+.ruff_cache
+__pycache__

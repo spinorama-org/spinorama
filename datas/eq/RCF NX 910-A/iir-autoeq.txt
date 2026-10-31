@@ -1,0 +1,14 @@
+EQ for RCF NX 910-A computed from Vendors-RCF data
+Preference Score 3.05 with EQ 4.70
+Generated from http://github.com/spinorama-org/spinorama/blob/develop/scripts/generate_peqs.py v0.26
+Dated: 2024-03-19-16:54:31
+
+Preamp: -2.2 dB
+
+Filter  1: ON PK Fc    60 Hz Gain +3.00 dB Q 2.76
+Filter  2: ON PK Fc    88 Hz Gain -4.39 dB Q 2.74
+Filter  3: ON PK Fc   190 Hz Gain -1.48 dB Q 2.68
+Filter  4: ON PK Fc  1700 Hz Gain +1.44 dB Q 2.01
+Filter  5: ON PK Fc  2245 Hz Gain -0.64 dB Q 2.88
+Filter  6: ON PK Fc  5732 Hz Gain -2.15 dB Q 1.07
+Filter  7: ON PK Fc 12301 Hz Gain -5.41 dB Q 1.07

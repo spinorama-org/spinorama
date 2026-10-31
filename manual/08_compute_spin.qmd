@@ -1,0 +1,104 @@
+---
+title: "Compute a Spinorama from your measurements"
+date: 2026-08-22
+abstract: >
+  Generate Spinorama graphs and preference scores from a local measurement set
+  without adding it to the full database.
+---
+
+[`scripts/compute_spin.py`](../scripts/compute_spin.py) loads one speaker's
+measurement directory, computes available Spinorama curves and preference
+scores, and writes PNG and JSON output. It does not modify the metadata
+database.
+
+## Quick start
+
+From the repository root, with the project environment available:
+
+```{.shell}
+python scripts/compute_spin.py /path/to/measurement-data
+```
+
+The script tries to detect the format and speaker name from the directory. Use
+`--verbose` or `-v` for additional logging:
+
+```{.shell}
+python scripts/compute_spin.py /path/to/measurement-data --verbose
+```
+
+## Supported formats
+
+| Format | Typical input | Notes |
+|---|---|---|
+| `klippel` | `SPL Horizontal.txt`, `SPL Vertical.txt` | Klippel NFS text export |
+| `princeton` | `*_H_IR.mat`, `*_V_IR.mat` | Princeton 3D3A impulse responses |
+| `spl_hv_txt` | `*_H.txt`, `*_V.txt` | Generic angle text files |
+| `gll_hv_txt` | One or more `.zip` files | GLL-extracted meridian/parallel data |
+| `rew_text_dump` | `On Axis.txt`, `LW.txt`, `ER.txt`, `SP.txt` | REW text export |
+| `webplotdigitizer` | `.json` or `.tar` | WebPlotDigitizer project |
+
+The input files may be directly in the supplied directory or in a version
+subdirectory. For ambiguous directories, force the format with `--format`.
+
+## Options
+
+```{.shell}
+python scripts/compute_spin.py DIRECTORY [OPTIONS]
+```
+
+| Option | Description |
+|---|---|
+| `--format FORMAT` | `auto`, `klippel`, `princeton`, `spl_hv_txt`, `gll_hv_txt`, `rew_text_dump`, or `webplotdigitizer` |
+| `--output-dir DIR` | Output directory; defaults to the input directory |
+| `--speaker-name NAME` | Name used in output filenames; defaults to the directory name |
+| `--width N` | Graph width in pixels; default `800` |
+| `--height N` | Graph height in pixels; default `600` |
+| `--symmetry MODE` | `auto`, `mirror`, `shift`, or `none`; default `auto` |
+| `--force` | Overwrite existing output files |
+| `--verbose`, `-v` | Enable verbose output |
+| `--version` | Print the tool version |
+
+For horizontal measurements, `mirror` copies positive angles to negative
+angles and `shift` wraps measurements from 180–350 degrees to -180–0 degrees.
+Use `none` when the files already contain the desired angle convention.
+
+## Examples
+
+Auto-detect the format and write output beside the input:
+
+```{.shell}
+python scripts/compute_spin.py ./my_speaker_data
+```
+
+Force Klippel input and write to a separate directory:
+
+```{.shell}
+python scripts/compute_spin.py ./my_speaker_data \
+  --format klippel --output-dir ./graphs
+```
+
+Generate larger graphs and replace existing output:
+
+```{.shell}
+python scripts/compute_spin.py ./my_speaker_data \
+  --width 1200 --height 900 --force
+```
+
+## Output
+
+The output directory can contain:
+
+- `{speaker}_CEA2034.png` and normalized CEA2034 graphs;
+- on-axis, predicted in-room response, group-delay, and reflection graphs;
+- horizontal and vertical SPL, contour, normalized contour, 3D contour, and
+  radar graphs when the input format provides enough angular data; and
+- `{speaker}_scores.json`, containing the computed preference-score fields.
+
+The score summary printed by the script includes the preference score with and
+without subwoofer, NBD terms, PIR smoothness, low-frequency extension, and
+other available components. Missing or incomplete measurements may cause some
+graphs or score fields to be omitted.
+
+To add the result to the shared database after inspecting it, place the source
+files in the normal measurement tree and use the [metadata manager](03_metadata.qmd)
+to record the speaker and measurement metadata.

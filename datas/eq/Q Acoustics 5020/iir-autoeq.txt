@@ -1,0 +1,14 @@
+EQ for Q Acoustics 5020 computed from ErinsAudioCorner data
+Preference Score 2.41 with EQ 6.01
+Generated from http://github.com/spinorama-org/spinorama/blob/develop/scripts/generate_peqs.py v0.26
+Dated: 2024-03-19-16:25:34
+
+Preamp: -3.0 dB
+
+Filter  1: ON PK Fc    65 Hz Gain +2.99 dB Q 0.58
+Filter  2: ON PK Fc   540 Hz Gain +2.83 dB Q 1.85
+Filter  3: ON PK Fc   820 Hz Gain -2.12 dB Q 3.00
+Filter  4: ON PK Fc  1288 Hz Gain -2.19 dB Q 2.90
+Filter  5: ON PK Fc  4818 Hz Gain -2.15 dB Q 2.94
+Filter  6: ON PK Fc  8694 Hz Gain -4.42 dB Q 1.05
+Filter  7: ON PK Fc 16239 Hz Gain -4.11 dB Q 0.64

@@ -1,0 +1,14 @@
+EQ for Arendal Sound 1610 Slim 8 computed from ASR data
+Preference Score 4.70 with EQ 6.07
+Generated from https://github.com/spinorama-org/spinorama/blob/develop/scripts/generate_peqs.py v0.28
+Dated: 2026-10-27-07:05:26
+
+Preamp: -2.3 dB
+
+Filter  1: ON PK Fc    67 Hz Gain +2.99 dB Q 0.36
+Filter  2: ON PK Fc    98 Hz Gain -3.40 dB Q 1.71
+Filter  3: ON PK Fc   134 Hz Gain -1.25 dB Q 1.04
+Filter  4: ON PK Fc   289 Hz Gain +2.15 dB Q 1.98
+Filter  5: ON PK Fc   424 Hz Gain -2.28 dB Q 1.70
+Filter  6: ON PK Fc   792 Hz Gain -2.26 dB Q 2.90
+Filter  7: ON PK Fc  1046 Hz Gain +1.23 dB Q 0.66

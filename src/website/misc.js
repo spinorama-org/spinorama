@@ -1,0 +1,576 @@
+// -*- coding: utf-8 -*-
+// A library to display spinorama charts
+//
+// Copyright (C) 2020-2025 Pierre Aubert pierre(at)spinorama(dot)org
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+// Shapes for which the CEA2034 preference score is meaningful and shown on the
+// speaker card. Pro/PA/cinema-fixture shapes (cbt, inwall, outdoor, surround,
+// toursound, etc.) have CEA2034 data but their pref_score is not displayed,
+// so the sort treats them as score-less to keep display and ordering aligned.
+export const validShape = Object.freeze(
+    new Set(['floorstanders', 'bookshelves', 'center', 'columns', 'liveportable', 'cinema'])
+);
+
+const invalidChars = '|:<>"\\/\\?*';
+export function sanitizeFilename(name) {
+    for (const char of invalidChars) {
+        name = name.replace(char, '_');
+    }
+    return name;
+}
+
+// hide an element
+export const hide = (elem) => {
+    if (elem?.classList) {
+        elem.classList.add('hidden');
+    }
+};
+
+// show an element
+export const show = (elem) => {
+    if (elem?.classList) {
+        elem.classList.remove('hidden');
+    }
+};
+
+// toggle the element visibility
+export const toggle = (elem) => {
+    if (elem?.classList) {
+        elem.classList.toggle('hidden');
+    }
+};
+
+export function toggleId(id) {
+    const elem = document.querySelector(id);
+    if (elem?.classList) {
+        elem.classList.toggle('hidden');
+    }
+}
+
+export function openModal(elem) {
+    if (elem?.classList) {
+        elem.classList.add('is-active');
+    }
+}
+
+export function closeModal(elem) {
+    if (elem?.classList) {
+        elem.classList.remove('is-active');
+    }
+}
+
+function getEQType(type) {
+    let val = 'unknown';
+    switch (type) {
+        case 0:
+            val = 'LP';
+            break;
+        case 1:
+            val = 'HP';
+            break;
+        case 2:
+            val = 'BP';
+            break;
+        case 3:
+            val = 'PK';
+            break;
+        case 4:
+            val = 'NO';
+            break;
+        case 5:
+            val = 'LS';
+            break;
+        case 6:
+            val = 'HS';
+            break;
+    }
+    return val;
+}
+
+export function getPeq(peq) {
+    const peqPrint = [];
+    peq.forEach((eq) => {
+        peqPrint.push({
+            freq: eq.freq,
+            dbGain: eq.dbGain,
+            Q: eq.Q,
+            type: getEQType(eq.type),
+        });
+    });
+    return peqPrint;
+}
+
+export function getPicture(brand, model, suffix) {
+    return encodeURI('pictures/' + sanitizeFilename(brand) + ' ' + sanitizeFilename(model) + '.' + suffix);
+}
+
+export function removeVendors(str) {
+    return str.replace('Vendors-', '');
+}
+
+export function getID(brand, model) {
+    return (brand + ' ' + model).replace(/['.+& |]/g, '-');
+}
+
+export function getPrice(price, amount) {
+    const val = parseFloat(price);
+    if (isNaN(val)) {
+        // console.log('no price')
+        return '?';
+    }
+    if (amount && amount === 'each') {
+        // console.log('price each '+price)
+        return price;
+    }
+    // default is per pair
+    // console.log('price pair '+price)
+    return (val / 2.0).toString();
+}
+
+export function getField(value, field, version) {
+    let fields = {};
+    if (value?.measurements[version]) {
+        const measurement = value.measurements[version];
+        if (Object.hasOwn(measurement, field)) {
+            fields = measurement[field];
+        }
+    }
+    return fields;
+}
+
+export function getSensitivity(value, def) {
+    if (def === undefined) {
+        def = value.default_measurement;
+    }
+    if (value.type === 'passive' && value.measurements[def]) {
+        const msr = value.measurements[def];
+        if (msr.specifications && msr.specifications.sensitivity) {
+            return msr.specifications.sensitivity;
+        }
+        if (msr.computed_sensitivity) {
+            return msr.computed_sensitivity.sensitivity_1m || msr.computed_sensitivity.computed || 0.0;
+        }
+    }
+    return 0.0;
+}
+
+export function getSPL(value, def) {
+    if (def === undefined) {
+        def = value.default_measurement;
+    }
+    if (value.measurements[def] && value.measurements[def].specifications && value.measurements[def].specifications.SPL) {
+        if (value.measurements[def].specifications.SPL.peak) {
+            return ['Peak', value.measurements[def].specifications.SPL.peak];
+        } else if (value.measurements[def].specifications.SPL.max) {
+            return ['Max', value.measurements[def].specifications.SPL.max];
+        } else if (value.measurements[def].specifications.SPL.continuous) {
+            return ['Continuous', value.measurements[def].specifications.SPL.continuous];
+        }
+    }
+    return ['***', 0.0];
+}
+
+export function getComputedSensitivity(value, version) {
+    let init_sensitivity = 0;
+    let delta = 0;
+    if (value.sensitivity) {
+        init_sensitivity = value.sensitivity;
+    }
+    if (value?.measurements[version]) {
+        const measurement = value.measurements[version];
+        if (Object.hasOwn(measurement, 'sensitivity_delta')) {
+            delta = measurement.sensitivity_delta;
+        }
+    }
+    const sensitivity = init_sensitivity + delta;
+    if (sensitivity !== 0.0) {
+        // console.log(value.brand+' sensitivity='+sensitivity)
+        return sensitivity;
+    }
+    return undefined;
+}
+
+export function getReviews(value) {
+    const reviews = [];
+    for (const version in value.measurements) {
+        const measurement = value.measurements[version];
+        let origin = measurement.origin;
+        let originLong = measurement.origin;
+        let originShort = measurement.origin;
+        const url =
+            'speakers/' +
+            sanitizeFilename(value.brand) +
+            ' ' +
+            sanitizeFilename(value.model) +
+            '/' +
+            removeVendors(origin) +
+            '/index_' +
+            version +
+            '.html';
+        if (origin === 'Misc') {
+            origin = version.replace('misc-', '');
+            originShort = version.replace('misc-', '');
+            originLong = version.replace('misc-', '');
+        } else {
+            origin = origin.replace('Vendors-', '');
+            originShort = origin.replace('Vendors-', '');
+            originLong = origin.replace('Vendors-', '');
+        }
+        if (origin === 'Princeton') {
+            origin = 'Princeton';
+            originShort = 'Pri.';
+        } else if (origin === 'napilopez') {
+            origin = 'Napilopez';
+            originShort = 'Nap.';
+        } else if (origin === 'speakerdata2034') {
+            origin = 'SpeakerData2034';
+            originShort = 'SPD.';
+        } else if (origin === 'archimago') {
+            origin = 'Archimago';
+            originShort = 'Arc.';
+        } else if (origin === 'audioxpress') {
+            origin = 'AudioXPress';
+            originShort = 'Axp.';
+        } else if (origin === 'audioholics') {
+            origin = 'audioholics';
+            originShort = 'Aud.';
+        } else if (origin === 'soundstageultra') {
+            origin = 'Sound Stage Ultra';
+            originShort = 'SSU.';
+        } else if (origin === 'sr') {
+            origin = 'Sound & Recordings';
+            originShort = 'S&R';
+        } else if (origin.search('nuyes') !== -1) {
+            origin = 'Nuyes';
+            originShort = 'Nuy.';
+        } else if (origin.search('ASR') !== -1) {
+            originShort = 'ASR';
+            origin = 'Audio Science Review';
+        } else if (origin.search('ErinsAudioCorner') !== -1) {
+            origin = "Erin's Audio Corner";
+            originShort = 'EAC';
+        } else if (origin.search('pp') !== -1 && origin !== 'Topping') {
+            origin = 'Production Partner';
+            originShort = 'PP';
+        } else if (origin === 'Danley') {
+            originShort = 'Danley';
+            origin = 'Danley';
+        } else if (origin === 'Perlisten') {
+            originShort = 'Perlisten';
+            origin = 'Perlisten';
+        }
+
+        origin = origin.charAt(0).toUpperCase() + origin.slice(1);
+        originLong = originLong.charAt(0).toUpperCase() + originLong.slice(1);
+        if (version.search('sealed') !== -1) {
+            origin = origin + ' (Sealed)';
+            originLong = originLong + ' (Sealed)';
+            originShort = originShort + ' (S)';
+        } else if (version.search('vented') !== -1) {
+            origin = origin + ' (Vented)';
+            originShort = originShort + ' (V)';
+            originLong = originLong + ' (Vented)';
+        } else if (version.search('ported') !== -1) {
+            origin = origin + ' (Ported)';
+            originShort = originShort + ' (P)';
+            originLong = originLong + ' (Ported)';
+        }
+
+        // eac-short-port
+        if (version.search('grille-on') !== -1) {
+            origin = origin + ' (Grille on)';
+            originShort = originShort + ' (Gon)';
+            originLong = originLong + ' (Grille on)';
+        } else if (version.search('no-grille') !== -1) {
+            origin = origin + ' (Grille off)';
+            originShort = originShort + ' (Gof)';
+            originLong = originLong + ' (Grille off)';
+        }
+
+        if (version.search('short-port') !== -1) {
+            origin = origin + ' (Short Port)';
+            originShort = originShort + ' (sP)';
+            originLong = originLong + ' (Short Port)';
+        } else if (version.search('long-port') !== -1) {
+            origin = origin + ' (Long Port)';
+            originShort = originShort + ' (lP)';
+            originLong = originLong + ' (Long Port)';
+        }
+
+        if (version.search('bassreflex') !== -1) {
+            origin = origin + ' (BR)';
+            originShort = originShort + ' (BR)';
+            originLong = originLong + ' (Bass Reflex)';
+        } else if (version.search('cardioid') !== -1) {
+            origin = origin + ' (C)';
+            originShort = originShort + ' (C)';
+            originLong = originLong + ' (Cardiod)';
+        }
+
+        if (version.search('fullrange') !== -1) {
+            origin = origin + ' (FR)';
+            originShort = originShort + ' (FR)';
+            originLong = originLong + ' (Full Range)';
+        } else if (version.search('lowcut') !== -1) {
+            origin = origin + ' (LC)';
+            originShort = originShort + ' (LC)';
+            originLong = originLong + ' (Low Cut)';
+        }
+
+        if (version.search('active') !== -1) {
+            origin = origin + ' (Act.)';
+            originLong = originLong + ' (Active)';
+        } else if (version.search('passive') !== -1) {
+            origin = origin + ' (Pas.)';
+            originLong = originLong + ' (Passive)';
+        }
+
+        if (version.search('horizontal') !== -1) {
+            origin = origin + ' (Hor.)';
+            originShort = originShort + ' (Ho)';
+            originLong = originLong + ' (Horizontal)';
+        } else if (version.search('vertical') !== -1) {
+            origin = origin + ' (Ver.)';
+            originShort = originShort + ' (Ve)';
+            originLong = originLong + ' (Vertical)';
+        }
+
+        if (version.search('gll') !== -1) {
+            origin = origin + ' (gll)';
+            originShort = originShort + ' (gll)';
+            originLong = originLong + ' (gll)';
+        } else if (version.search('klippel') !== -1) {
+            origin = origin + ' (klippel)';
+            originShort = originShort + ' (nfs)';
+            originLong = originLong + ' (klippel)';
+        }
+
+        if (version.search('wide') !== -1) {
+            origin = origin.slice(0, origin.length - 1) + '/W)';
+            originShort = originShort + ' (/W)';
+            originLong = originLong.slice(0, originLong.length - 1) + '/Wide)';
+        } else if (version.search('narrow') !== -1) {
+            origin = origin.slice(0, origin.length - 1) + '/N)';
+            originShort = originShort + ' (/N)';
+            originLong = originLong.slice(0, originLong.length - 1) + '/Narrow)';
+        } else if (version.search('medium') !== -1) {
+            origin = origin.slice(0, origin.length - 1) + '/M)';
+            originShort = originShort + ' (/M)';
+            originLong = originLong.slice(0, originLong.length - 1) + '/Medium)';
+        }
+
+        if (version.search('Gecko') !== -1) {
+            origin = origin + ' (Gecko)';
+            originLong = originLong + ' (Gecko)';
+        } else if (version.search('Tree') !== -1) {
+            origin = origin + ' (Tree)';
+            originLong = originLong + ' (Tree)';
+        } else if (version.search('Pod') !== -1) {
+            origin = origin + ' (Pod)';
+            originLong = originLong + ' (Pod)';
+        }
+
+        const ipattern = version.search('pattern');
+        if (ipattern !== -1) {
+            const sversion = version.slice(ipattern + 8);
+            if (sversion.search(/[0-9]*/) !== -1) {
+                const sversionTimes = sversion.indexOf('x');
+                let sversionDeg = sversion;
+                if (sversionTimes !== -1) {
+                    const verticalAngle = sversion.slice(sversionTimes);
+                    const dashPos = verticalAngle.indexOf('-');
+                    if (dashPos === -1) {
+                        sversionDeg = ' ' + sversion.slice(0, sversionTimes) + 'º' + sversion.slice(sversionTimes) + 'º';
+                    } else {
+                        sversionDeg = ' ' + sversion.slice(0, sversionTimes) + 'º' + verticalAngle.slice(0, dashPos) + 'º';
+                    }
+                } else {
+                    sversionDeg = ' ' + sversion + 'º';
+                }
+                origin = origin + sversionDeg;
+                originLong = originLong + sversionDeg;
+            }
+        }
+
+        // version
+        const posVersion = version.search(/-v[123456]-/);
+        if (posVersion !== -1) {
+            origin = origin + ' (v' + version[posVersion + 2] + '-' + version.slice(posVersion + 4) + ')';
+            originLong = originLong + ' (v' + version[posVersion + 2] + '-' + version.slice(posVersion + 4) + ')';
+        }
+
+        // counter
+        const posCounter = version.search(/-v[123456]x/);
+        if (posCounter !== -1) {
+            origin = origin + ' (' + version[posCounter + 2] + 'x)';
+            originLong = originLong + ' (' + version[posCounter + 2] + 'x)';
+        }
+
+        // configuration
+        const posConfiguration = version.search(/-configuration-/);
+        if (posConfiguration !== -1) {
+            origin = origin + ' (' + version.slice(posConfiguration + 14).replace('-', ' ') + ')';
+            originLong = originLong + ' (' + version.slice(posConfiguration + 14).replace('-', ' ') + ')';
+        }
+
+        // eac-15-deg
+        const degree = /[-][0-9]+[-]deg(ree)?/;
+        const degree_pos = origin.search(degree);
+        if (degree_pos !== -1) {
+            origin = origin.replace(/[-]deg(ree)?/, '°');
+            originShort = originShort.replace(/[-]deg(ree)?/, '°');
+            originLong = originLong.replace(/[-]deg(ree)?/, '°');
+        }
+
+        // add an icon if we have one
+        const icons = [
+            ['Ascend Acoustics', '<img width="16" height="16" src="/pictures/icon-ascendacoustics-32x32.webp"/>'],
+            ['Audio First Design', '<img width="16" height="16" src="/pictures/icon-afd-32x32.webp"/>'],
+            ['Audio Science Review', '<img width="16" height="16" src="/pictures/icon-asr-32x32.webp"/>'],
+            ['Danley', '<img width="16" height="16" src="/pictures/icon-danley-32x32.webp"/>'],
+            ["Erin's Audio Corner", '<img width="16" height="16" src="/pictures/icon-eac-32x32.webp"/>'],
+            ['JBL', '<img width="16" height="16" src="/pictures/icon-jbl-32x32.webp"/>'],
+            ['KEF', '<img width="16" height="16" src="/pictures/icon-kef-32x32.webp"/>'],
+            ['Genelec', '<img width="16" height="16" src="/pictures/icon-genelec-32x32.webp"/>'],
+            ['Neumann', '<img width="16" height="16" src="/pictures/icon-neumann-32x32.webp"/>'],
+            ['Perlisten', '<img width="16" height="16" src="/pictures/icon-perlisten-32x32.webp"/>'],
+            ['Sigberg', '<img width="16" height="16" src="/pictures/icon-sigbergaudio-32x32.webp"/>'],
+        ];
+
+        icons.map((icon) => {
+            const [reviewer, img] = [...icon];
+            if (origin.search(reviewer) !== -1) {
+                originLong = `<span class="icon-text"><span class="icon">${img}</span><span>${originLong}</span><span>`;
+            }
+        });
+
+        reviews.push({
+            url: encodeURI(url),
+            origin: origin,
+            originShort: originShort,
+            originLong: originLong,
+            version: version,
+            scores: getField(value, 'pref_rating', version),
+            scoresEq: getField(value, 'pref_rating_eq', version),
+            estimates: getField(value, 'estimates', version),
+            extras: getField(value, 'extras', version),
+            specifications: getField(value, 'specifications', version),
+            estimatesEq: getField(value, 'estimates_eq', version),
+            sensitivity: getSensitivity(value, version),
+        });
+    }
+    return {
+        reviews: reviews,
+    };
+}
+
+export function getScore(value, def) {
+    if (def) {
+        def = value.default_measurement;
+    }
+    const measurement = value?.measurements[def];
+    let score = '***';
+    let lfx = '***';
+    let flatness = 0.0;
+    let smoothness = '***';
+    let scoreScaled = '***';
+    let lfxScaled = '***';
+    let flatnessScaled = 0.0;
+    let smoothnessScaled = '***';
+
+    if (measurement) {
+        const estimates = measurement.estimates;
+        if (estimates?.ref_band) {
+            flatness = estimates.ref_band;
+        }
+
+        const prefScaled = measurement.scaled_pref_rating;
+        if (prefScaled?.scaled_flatness !== undefined) {
+            flatnessScaled = prefScaled.scaled_flatness;
+        }
+
+        const pref = measurement.pref_rating;
+        if (pref) {
+            score = pref.pref_score;
+            if (pref.lfx_hz !== undefined && pref.lfx_hz !== null) {
+                lfx = pref.lfx_hz;
+            }
+            smoothness = pref.sm_pred_in_room;
+            scoreScaled = prefScaled?.scaled_pref_score ?? '***';
+            if (prefScaled?.scaled_lfx_hz !== undefined && prefScaled?.scaled_lfx_hz !== null) {
+                lfxScaled = prefScaled.scaled_lfx_hz;
+            }
+            smoothnessScaled = prefScaled?.scaled_sm_pred_in_room ?? '***';
+        }
+    }
+
+    let specifications = {};
+    if (measurement?.specifications) {
+        specifications = measurement.specifications;
+    }
+    return {
+        score: score === '***' ? score : parseFloat(score).toFixed(1),
+        lfx: lfx === '***' ? lfx : lfx.toFixed(0),
+        flatness: flatness.toFixed(1),
+        smoothness: smoothness === '***' ? smoothness : smoothness.toFixed(1),
+        scoreScaled: scoreScaled === '***' ? scoreScaled : scoreScaled.toFixed(1),
+        lfxScaled: lfxScaled,
+        flatnessScaled: flatnessScaled,
+        smoothnessScaled: smoothnessScaled,
+        specifications: specifications,
+    };
+}
+
+export function getLoading(key) {
+    if (key < 12) {
+        return 'eager';
+    }
+    return 'lazy';
+}
+
+export function getDecoding(key) {
+    if (key < 12) {
+        return 'sync';
+    }
+    return 'async';
+}
+
+// Get URL parameter value
+export function getUrlParameter(name) {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get(name);
+}
+
+// Check if feature flag is enabled
+export function isPlotlyEnabled() {
+    const plotlyFlag = getUrlParameter('plotly');
+    return plotlyFlag === 'true' || plotlyFlag === '1';
+}
+
+// Check if ploty flag is enabled AND we're in compact mode (mobile-like)
+export function shouldDisablePlotlyInteraction() {
+    const plotyFlag = getUrlParameter('ploty');
+    if (plotyFlag !== '1') {
+        return false;
+    }
+
+    // Use the same compact detection logic as the plotting code
+    const windowWidth = window.innerWidth;
+    const windowHeight = window.innerHeight;
+    const graphSmall = 550; // Same constant as in plot.js
+
+    return windowWidth < graphSmall || windowHeight < graphSmall;
+}

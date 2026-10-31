@@ -1,0 +1,16 @@
+EQ for KEF R6C Meta computed from Vendors-KEF data
+Preference Score 5.44 with EQ 6.04
+Generated from http://github.com/spinorama-org/spinorama/blob/develop/scripts/generate_peqs.py v0.24
+Dated: 2023-08-26-14:16:42
+
+Preamp: -4.7 dB
+
+Filter  1: ON LS Fc    79 Hz Gain +2.80 dB Q 1.01
+Filter  2: ON PK Fc    79 Hz Gain +2.85 dB Q 0.27
+Filter  3: ON PK Fc   106 Hz Gain -2.87 dB Q 1.69
+Filter  4: ON PK Fc   207 Hz Gain -2.69 dB Q 0.68
+Filter  5: ON PK Fc   584 Hz Gain -0.97 dB Q 2.92
+Filter  6: ON PK Fc  2461 Hz Gain +1.90 dB Q 2.74
+Filter  7: ON PK Fc  3676 Hz Gain +0.86 dB Q 2.72
+Filter  8: ON PK Fc  7669 Hz Gain -0.13 dB Q 0.31
+Filter  9: ON PK Fc 12246 Hz Gain +1.34 dB Q 0.61

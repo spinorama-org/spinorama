@@ -1,0 +1,14 @@
+EQ for KEF LS60 Wireless computed from ErinsAudioCorner data
+Preference Score 7.45 with EQ 7.90
+Generated from http://github.com/spinorama-org/spinorama/blob/develop/scripts/generate_peqs.py v0.26
+Dated: 2024-03-19-16:29:05
+
+Preamp: -2.5 dB
+
+Filter  1: ON PK Fc    22 Hz Gain +2.86 dB Q 2.63
+Filter  2: ON PK Fc   184 Hz Gain -2.87 dB Q 0.34
+Filter  3: ON PK Fc   211 Hz Gain +1.78 dB Q 1.99
+Filter  4: ON PK Fc   424 Hz Gain +2.72 dB Q 1.38
+Filter  5: ON PK Fc  4495 Hz Gain -0.31 dB Q 2.72
+Filter  6: ON PK Fc  7308 Hz Gain -1.74 dB Q 1.90
+Filter  7: ON PK Fc  8694 Hz Gain +2.40 dB Q 1.73

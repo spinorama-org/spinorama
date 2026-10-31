@@ -1,0 +1,20 @@
+<%include file="symbols.html"/>
+
+<nav class="navbar-bar mx-1 my-1">
+  <div class="dropdown is-hoverable" id="menu-main">
+    <div class="dropdown-trigger" id="menu-main-trigger">
+      <button type="button" class="button" aria-haspopup="true" aria-controls="menu-main" aria-label="menu-main">
+        <svg class="icon"><use href="#icon-bars"/></svg>
+      </button>
+    </div>
+    <div class="dropdown-menu" id="menu-main-dropdown" role="menu">
+      <div class="dropdown-content">
+        <%include file="nav_menu.html"/>
+      </div>
+    </div>
+  </div>
+  <a href="/" class="navbar-brand-link is-size-4">
+    <b>SPIN</b>orama
+  </a>
+</nav>
+<%include file="banner.html"/>

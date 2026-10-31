@@ -1,0 +1,14 @@
+EQ for JBL Stage A130 computed from ErinsAudioCorner data
+Preference Score 3.39 with EQ 5.76
+Generated from https://github.com/spinorama-org/spinorama/blob/develop/scripts/generate_peqs.py v0.26
+Dated: 2024-12-30-14:23:52
+
+Preamp: -3.0 dB
+
+Filter  1: ON PK Fc    56 Hz Gain +1.22 dB Q 1.28
+Filter  2: ON PK Fc    69 Hz Gain +2.97 dB Q 0.25
+Filter  3: ON PK Fc   113 Hz Gain -4.33 dB Q 0.99
+Filter  4: ON PK Fc   560 Hz Gain +1.99 dB Q 0.83
+Filter  5: ON PK Fc  1429 Hz Gain -4.39 dB Q 1.49
+Filter  6: ON PK Fc  1887 Hz Gain +3.00 dB Q 3.00
+Filter  7: ON PK Fc 13186 Hz Gain -4.32 dB Q 0.50

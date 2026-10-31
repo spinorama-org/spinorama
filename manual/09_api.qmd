@@ -1,0 +1,135 @@
+---
+title: "Spinorama REST API"
+date: 2026-08-22
+abstract: >
+  Read speaker and headphone metadata, precomputed measurements, and validation
+  results through the Spinorama REST API.
+---
+
+The public API is available at [api.spinorama.org](https://api.spinorama.org).
+It is read-only for data access. Interactive OpenAPI documentation is available
+at [api.spinorama.org/docs](https://api.spinorama.org/docs).
+
+The examples below use the current `/v1` API prefix and URL-encode names that
+contain spaces or punctuation.
+
+## Speakers
+
+### List brands and speakers
+
+```text
+GET /v1/brands
+GET /v1/speakers
+```
+
+```{.shell}
+curl https://api.spinorama.org/v1/brands
+curl https://api.spinorama.org/v1/speakers
+```
+
+Both endpoints return sorted JSON arrays.
+
+### Get speaker metadata
+
+```text
+GET /v1/speaker/{speaker_name}/metadata
+```
+
+```{.shell}
+curl "https://api.spinorama.org/v1/speaker/Genelec%208341A/metadata"
+```
+
+The response contains the brand, model, type, shape, price, measurement
+versions, and other metadata. A missing speaker returns an error response.
+
+### List measurement versions
+
+```text
+GET /v1/speaker/{speaker_name}/versions
+```
+
+```{.shell}
+curl "https://api.spinorama.org/v1/speaker/Genelec%208341A/versions"
+```
+
+The version values are the measurement keys in the speaker metadata, such as
+`asr`, `vendor`, or `eac`. Use the returned value exactly in the next requests.
+
+### List available measurements
+
+```text
+GET /v1/speaker/{speaker_name}/version/{speaker_version}/measurements
+```
+
+```{.shell}
+curl "https://api.spinorama.org/v1/speaker/Genelec%208341A/version/asr/measurements"
+```
+
+The endpoint lists precomputed graph names for that speaker and version. The
+available set depends on the source data and can include `CEA2034`, `On Axis`,
+`Estimated In-Room Response`, reflection graphs, SPL graphs, contours, and
+radar graphs.
+
+### Download a measurement
+
+```text
+GET /v1/speaker/{speaker_name}/version/{speaker_version}/measurements/{measurement_name}
+```
+
+The `measurement_format` query parameter defaults to `json`. PNG, JPG, and WebP
+are available when the corresponding graph exists:
+
+```{.shell}
+curl "https://api.spinorama.org/v1/speaker/Genelec%208341A/version/asr/measurements/CEA2034?measurement_format=json"
+curl "https://api.spinorama.org/v1/speaker/Genelec%208341A/version/asr/measurements/CEA2034?measurement_format=png" \
+  --output Genelec-8341A-CEA2034.png
+```
+
+The API also accepts names ending in `_unmelted` for the JSON representation
+where that precomputed data exists. Use the list endpoint rather than assuming
+that every graph is available for every version.
+
+## Headphones
+
+```text
+GET /v1/headphones
+GET /v1/headphone/brands
+GET /v1/headphone/shapes
+GET /v1/headphone/{headphone_name}/metadata
+GET /v1/headphone/{headphone_name}/versions
+GET /v1/headphone/{headphone_name}/frequency_response
+```
+
+The headphone list accepts optional filters:
+
+- `brand`
+- `shape`: `over-ear`, `on-ear`, or `in-ear`
+- `recommendation`: `Yes` or `No`
+
+```{.shell}
+curl "https://api.spinorama.org/v1/headphones?shape=over-ear"
+curl "https://api.spinorama.org/v1/headphone/Example%20Model/metadata"
+curl "https://api.spinorama.org/v1/headphone/Example%20Model/frequency_response"
+```
+
+The frequency-response endpoint returns CSV and uses the headphone's default
+measurement unless a `version` query parameter is supplied.
+
+## Validate speaker metadata
+
+```text
+POST /v1/validate
+Content-Type: application/json
+```
+
+Send a JSON object containing at least `brand` and `model`. The response
+contains `valid`, a list of `messages`, and the normalized `speaker_name`.
+
+```{.shell}
+curl -X POST "https://api.spinorama.org/v1/validate" \
+  -H "Content-Type: application/json" \
+  -d '{"brand":"MyBrand","model":"MyModel","type":"passive","shape":"bookshelves"}'
+```
+
+Use this endpoint to catch schema problems before submitting metadata. It does
+not write to the database.

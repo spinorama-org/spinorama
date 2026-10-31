@@ -1,0 +1,14 @@
+EQ for Thomann Swissonic A305 computed from ErinsAudioCorner data
+Preference Score 5.34 with EQ 6.30
+Generated from http://github.com/spinorama-org/spinorama/blob/develop/scripts/generate_peqs.py v0.26
+Dated: 2024-03-19-16:55:53
+
+Preamp: -2.7 dB
+
+Filter  1: ON PK Fc    46 Hz Gain +3.00 dB Q 1.99
+Filter  2: ON PK Fc    69 Hz Gain -2.95 dB Q 1.40
+Filter  3: ON PK Fc   666 Hz Gain +3.00 dB Q 2.96
+Filter  4: ON PK Fc  1010 Hz Gain -1.25 dB Q 2.16
+Filter  5: ON PK Fc  1954 Hz Gain -1.47 dB Q 2.64
+Filter  6: ON PK Fc  6361 Hz Gain -0.97 dB Q 3.00
+Filter  7: ON PK Fc 10707 Hz Gain -1.73 dB Q 2.96
