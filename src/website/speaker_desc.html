@@ -431,151 +431,6 @@ Links to other reviews: <a href="${review}">${key} review</a>
         <source srcset="/${_webp}" type="image/webp">
         <img src="/${_jpg}" alt="${speaker_brand} ${speaker_model}" loading="lazy" decoding="async">
       </picture>
-      <script type="module">
-        // Decode Plotly bdata (base64 typed arrays) or plain arrays
-        function decodePlotlyArray(obj) {
-          if (Array.isArray(obj)) return obj;
-          if (!obj || !obj.bdata) return null;
-          var bin = atob(obj.bdata);
-          var len = bin.length;
-          var bytes = new Uint8Array(len);
-          for (var i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i);
-          var dtype = obj.dtype || 'f8';
-          if (dtype === 'f8') return Array.from(new Float64Array(bytes.buffer));
-          if (dtype === 'f4') return Array.from(new Float32Array(bytes.buffer));
-          if (dtype === 'i2') return Array.from(new Int16Array(bytes.buffer));
-          if (dtype === 'i4') return Array.from(new Int32Array(bytes.buffer));
-          if (dtype === 'u1') return Array.from(new Uint8Array(bytes.buffer));
-          return Array.from(new Float64Array(bytes.buffer));
-        }
-
-        function decodePlotlyZ(obj, numAngles, numFreqs) {
-          var flat = decodePlotlyArray(obj);
-          if (!flat) return null;
-          if (obj.shape) {
-            numAngles = obj.shape.split ? parseInt(obj.shape.split(',')[0]) : obj.shape[0];
-            numFreqs = obj.shape.split ? parseInt(obj.shape.split(',')[1]) : obj.shape[1];
-          }
-          var z = [];
-          for (var a = 0; a < numAngles; a++) {
-            z.push(flat.slice(a * numFreqs, (a + 1) * numFreqs));
-          }
-          return z;
-        }
-
-        function extractMinus6dB(spec) {
-          if (!spec || !spec.data || !spec.data[0]) return null;
-          var d = spec.data[0];
-          var freqs = decodePlotlyArray(d.x);
-          var angles = decodePlotlyArray(d.y);
-          var z = Array.isArray(d.z) ? d.z : decodePlotlyZ(d.z, angles ? angles.length : 0, freqs ? freqs.length : 0);
-          if (!freqs || !angles || !z) return null;
-
-          var posLine = [], negLine = [];
-          for (var fi = 0; fi < freqs.length; fi++) {
-            var posAngle = null, negAngle = null;
-            // Positive angles: find first angle where SPL < -6
-            for (var ai = 0; ai < angles.length; ai++) {
-              if (angles[ai] > 0 && z[ai][fi] < -6) {
-                if (ai > 0 && z[ai - 1][fi] >= -6) {
-                  var ratio = (-6 - z[ai - 1][fi]) / (z[ai][fi] - z[ai - 1][fi]);
-                  posAngle = angles[ai - 1] + ratio * (angles[ai] - angles[ai - 1]);
-                } else {
-                  posAngle = angles[ai];
-                }
-                break;
-              }
-            }
-            // Negative angles: find first angle where SPL < -6 going negative
-            for (var ai = angles.length - 1; ai >= 0; ai--) {
-              if (angles[ai] < 0 && z[ai][fi] < -6) {
-                if (ai < angles.length - 1 && z[ai + 1][fi] >= -6) {
-                  var ratio = (-6 - z[ai + 1][fi]) / (z[ai][fi] - z[ai + 1][fi]);
-                  negAngle = angles[ai + 1] + ratio * (angles[ai] - angles[ai + 1]);
-                } else {
-                  negAngle = angles[ai];
-                }
-                break;
-              }
-            }
-            if (posAngle !== null) posLine.push({ freq: freqs[fi], angle: posAngle });
-            if (negAngle !== null) negLine.push({ freq: freqs[fi], angle: negAngle });
-          }
-          return { pos: posLine, neg: negLine };
-        }
-
-        function plotDirectivity(divId, spec, title) {
-          var lines = extractMinus6dB(spec);
-          if (!lines) return;
-          var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-          var bg = isDark ? '#131318' : '#faf8ff';
-          var fg = isDark ? '#e3e1e9' : '#1b1b21';
-          var grid = isDark ? '#34343b' : '#c6c5d0';
-          var c1 = isDark ? '#b9c3ff' : '#4758a9';
-          var c2 = isDark ? '#e2bad9' : '#745470';
-
-          var traces = [
-            { x: lines.pos.map(function(p) { return p.freq; }),
-              y: lines.pos.map(function(p) { return p.angle; }),
-              mode: 'lines', name: '+', line: { color: c1, width: 2 }, showlegend: false },
-            { x: lines.neg.map(function(p) { return p.freq; }),
-              y: lines.neg.map(function(p) { return p.angle; }),
-              mode: 'lines', name: '-', line: { color: c2, width: 2, dash: 'dot' }, showlegend: false }
-          ];
-          var container = document.getElementById(divId);
-          var plotConfig = { displayModeBar: false, staticPlot: true, responsive: true };
-
-          function doPlot() {
-            var cw = container ? container.offsetWidth : 400;
-            if (cw < 100) cw = 400;
-            var layout = {
-              title: { text: title, font: { size: 10, color: fg } },
-              paper_bgcolor: bg, plot_bgcolor: bg,
-              autosize: false,
-              width: cw,
-              height: Math.max(180, cw * 0.5),
-              xaxis: { type: 'log',
-                       tickfont: { size: 8, color: fg }, gridcolor: grid, linecolor: grid,
-                       range: [Math.log10(100), Math.log10(20000)] },
-              yaxis: { title: { text: 'deg', font: { size: 9, color: fg } },
-                       tickfont: { size: 8, color: fg }, gridcolor: grid, linecolor: grid,
-                       range: [-180, 180], dtick: 90, zeroline: true, zerolinecolor: grid },
-              margin: { l: 32, r: 8, t: 22, b: 22 }
-            };
-            if (window.Plotly) {
-              window.Plotly.newPlot(divId, traces, layout, plotConfig);
-            }
-          }
-
-          // Container may be hidden (inactive tab) — defer until visible
-          if (container && container.offsetWidth > 0) {
-            doPlot();
-          } else {
-            var obs = new ResizeObserver(function(entries) {
-              if (entries[0].contentRect.width > 0) {
-                obs.disconnect();
-                doPlot();
-              }
-            });
-            if (container) obs.observe(container);
-          }
-        }
-
-        var hUrl = './${g_key}/SPL%20Horizontal%20Contour%20Normalized.json';
-        var vUrl = './${g_key}/SPL%20Vertical%20Contour%20Normalized.json';
-        fetch(hUrl).then(function(r) {
-          if (!r.ok) return null;
-          return r.json();
-        }).then(function(spec) {
-          if (spec) plotDirectivity('directivity-h', spec, 'Horizontal Directivity (-6dB)');
-        }).catch(function(e) { console.warn('H directivity load failed:', e); });
-        fetch(vUrl).then(function(r) {
-          if (!r.ok) return null;
-          return r.json();
-        }).then(function(spec) {
-          if (spec) plotDirectivity('directivity-v', spec, 'Vertical Directivity (-6dB)');
-        }).catch(function(e) { console.warn('V directivity load failed:', e); });
-      </script>
     </div>
   </div>
   % endif
@@ -701,8 +556,8 @@ Links to other reviews: <a href="${review}">${key} review</a>
 </div>
 <div class="desc-block">
   <h4 class="title is-6 mb-3">Directivity (-6dB)</h4>
-  <div id="directivity-h" class="directivity-plot"></div>
-  <div id="directivity-v" class="directivity-plot"></div>
+  <div class="directivity-plot"><img src="./${g_key}/Horizontal%20Directivity.webp" alt="Horizontal Directivity (-6dB)" loading="lazy" decoding="async" style="max-width:100%;height:auto" onerror="this.parentElement.style.display='none'"></div>
+  <div class="directivity-plot"><img src="./${g_key}/Vertical%20Directivity.webp" alt="Vertical Directivity (-6dB)" loading="lazy" decoding="async" style="max-width:100%;height:auto" onerror="this.parentElement.style.display='none'"></div>
 </div>
 % endif
 
@@ -771,53 +626,12 @@ This EQ is designed by ASR member maiky76. This EQ optimise the Harman score and
 <%def name="eqs_print_graph(graph, doc, width, height, ratio=2)">
 <%
   origin = default_origin.replace('+', '%20').replace(' ', '%20').replace('&', '%26')
-  is_hist = 'hist' in graph
 %>
 <div class="eq-graph" style="max-width:400px">
-  <div id="${origin}-${graph}"></div>
-  <script type="module">
-   import { displayGraph } from "/js/graph-${versions['CACHE']}${min}.js";
-   let graph = "../${origin}/${graph | space2url}";
-   let graph_json = "./" + graph + ".json";
-   const spec = fetch(graph_json)
-     .then( (response) => response.json() )
-     .then( (spec) => {
-       spec.layout.title = {
-	 text: '${doc}'
-       }
-       // Shorten EQ trace names: "Peak 1" → "PK1: 369Hz"
-       var typeMap = { 'Peak': 'PK', 'Lowshelf': 'LS', 'Highshelf': 'HS', 'Lowpass': 'LP', 'Highpass': 'HP', 'Notch': 'NO', 'Bandpath': 'BP' };
-       if (spec.data) {
-         for (var t of spec.data) {
-           if (t.name) {
-             var parts = t.name.match(/^(\w+)\s+(\d+)$/);
-             if (parts && typeMap[parts[1]]) {
-               var shortType = typeMap[parts[1]] + parts[2];
-               // Find peak frequency from trace data
-               var peakFreq = '';
-               if (t.y && t.x) {
-                 var maxIdx = 0, maxVal = 0;
-                 for (var k = 0; k < t.y.length; k++) {
-                   if (Math.abs(t.y[k]) > maxVal) { maxVal = Math.abs(t.y[k]); maxIdx = k; }
-                 }
-                 if (t.x[maxIdx] !== undefined) peakFreq = ': ' + Math.round(t.x[maxIdx]) + 'Hz';
-               }
-               t.name = shortType + peakFreq;
-             }
-           }
-         }
-       }
-% if is_hist:
-       if (!spec.layout.yaxis) spec.layout.yaxis = {};
-       spec.layout.yaxis.showticklabels = true;
-       spec.layout.yaxis.title = { text: 'Count' };
-       if (!spec.layout.xaxis) spec.layout.xaxis = {};
-       spec.layout.xaxis.title = { text: 'Deviation (dB)' };
-       spec.layout._ratioOverride = 3;
-% endif
-       displayGraph("On Axis", graph_json, "${origin}-${graph}", spec, false, ${ratio});
-     });
-  </script>
+  <figure>
+    <img src="../${origin}/${graph | space2url}.webp" alt="${doc}" loading="lazy" decoding="async" style="max-width:100%;height:auto" onerror="this.closest('.eq-graph').style.display='none'">
+    <figcaption>${doc}</figcaption>
+  </figure>
 </div>
 </%def>
 
@@ -859,38 +673,17 @@ This EQ is designed by ASR member maiky76. This EQ optimise the Harman score and
 </%def>
 
 <%def name="eqs_compare(eq)">
-<!--
-<picture class="image">
-  <source srcset="../eq_compare.webp" type="image/webp" >
-  <img src="../eq_compare.jpg" alt="${speaker_brand} ${speaker_model}" loading="lazy" decoding="async" width="700" height="300" >
-</picture>
--->
-<div id="eq_compare"></div>
-<script type="module">
- import { displayGraph } from "/js/graph-${versions['CACHE']}${min}.js";
- const spec = fetch("../eq_compare.json")
-   .then( (response) => response.json() )
-   .then( (spec) => {
-     displayGraph("On Axis", "../eq_compare.json", "eq_compare", spec, false, 2);
-   });
-</script>
+<div>
+  <img src="../eq_compare.webp" alt="EQ comparison for ${speaker_brand} ${speaker_model}" loading="lazy" decoding="async" style="max-width:100%;height:auto" onerror="this.parentElement.style.display='none'">
+</div>
 </%def>
 
 <%def name="eqs_spider(eq)">
 <div class="eq-graph">
-  <div id="spider"></div>
-  <script type="module">
-   import { displayGraph } from "/js/graph-${versions['CACHE']}${min}.js";
-   const spec = fetch("../spider.json")
-     .then( (response) => response.json() )
-     .then( (spec) => {
-         spec.layout.title = {
-           text: 'Improvements made by EQ'
-         }
-         spec.layout.showlegend = true;
-       displayGraph("On Axis", "../spider.json", "spider", spec, false, 2);
-     });
-  </script>
+  <figure>
+    <img src="../spider.webp" alt="Improvements made by EQ" loading="lazy" decoding="async" style="max-width:100%;height:auto" onerror="this.closest('.eq-graph').style.display='none'">
+    <figcaption>Improvements made by EQ</figcaption>
+  </figure>
 </div>
 </%def>
 

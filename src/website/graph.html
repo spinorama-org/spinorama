@@ -3,25 +3,19 @@
   <head>
     <title>Graphs and Measurements for ${speaker}</title>
     <%include file="head.html"/>
-    <%include file="head_vega.html"/>
   </head>
   <body>
     <%include file="nav_simple.html"/>
-<!--
-    <%include file="graph_tip.html"/>
--->
     <%! def space2url(text): return text.replace(' ', '%20') %>
 
-    <div id="visGraph" class="graph"></div>
-
-    <script type="module">
-      import { displayGraph } from "/js/graph-${versions['CACHE']}${min}.js";
-      const spec = fetch("${graph | space2url}.json")
-      .then( (response) => response.json() )
-      .then( (spec) => {
-        displayGraph("${graph}", "${graph}.json", visGraph, spec, true, 1);
-      });
-    </script>
+    <div class="graph">
+      <img src="${graph | space2url}.webp" alt="${graph} graph for ${speaker}"
+           style="max-width:100%;height:auto" decoding="async">
+    </div>
+    <p class="has-text-grey is-size-7">
+      Graph image from spinorama.org. Measurement data is available to
+      approved noncommercial users through the API; see the documentation.
+    </p>
 
     <%include file="footer.html"/>
   </body>

@@ -3,13 +3,15 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.encoders import jsonable_encoder
-from starlette.responses import FileResponse, JSONResponse
+from starlette.responses import FileResponse, JSONResponse, Response
 
+from ..fingerprint import amplitude_from_env, apply_to_csv_text, secret_from_env
 from ..state import (
     API_VERSION,
     HEADPHONE_FILES,
@@ -20,6 +22,7 @@ from ..state import (
 
 
 router = APIRouter(prefix=f"/{API_VERSION}", tags=["headphone"])
+logger = logging.getLogger("api.download")
 
 
 @router.get("/headphones")
@@ -90,6 +93,7 @@ async def get_headphone_versions(
 @router.get("/headphone/{headphone_name}/frequency_response")
 async def get_headphone_frequency_response(
     headphone_name: str,
+    request: Request,
     version: Annotated[
         str | None,
         Query(description="Measurement version (defaults to default_measurement)"),
@@ -119,4 +123,21 @@ async def get_headphone_frequency_response(
     if not os.path.exists(csv_path):
         return {"error": f"No frequency response data for {headphone_name} ({meas_key})"}
 
-    return FileResponse(csv_path, media_type="text/csv")
+    key_id = getattr(request.state, "api_key_id", "anonymous")
+    resource = f"{headphone_name}/{meas_key}/frequency_response"
+    logger.info("download key=%s resource=%s format=csv", key_id, resource)
+    secret = secret_from_env()
+    if not secret:
+        return FileResponse(csv_path, media_type="text/csv")
+    with open(csv_path, "r", encoding="utf8", newline="") as fd:
+        text = fd.read()
+    return Response(
+        content=apply_to_csv_text(
+            text,
+            key_id=str(key_id),
+            resource=resource,
+            secret=secret,
+            amplitude_db=amplitude_from_env(),
+        ),
+        media_type="text/csv",
+    )

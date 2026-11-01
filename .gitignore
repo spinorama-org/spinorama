@@ -15,6 +15,7 @@ TAGS
 .coverage
 /dist
 /dist-dotli
+/dist-private
 tmp
 extracted
 /logs

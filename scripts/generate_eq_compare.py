@@ -28,21 +28,29 @@ import argparse
 import numpy as np
 
 from generate_common import get_custom_logger, args2level, find_metadata_file
-from spinorama.constant_paths import CPATH_DIST_SPEAKERS, CPATH_DATAS_EQ
+from spinorama.constant_paths import CPATH_DIST_SPEAKERS, CPATH_PRIVATE_SPEAKERS, CPATH_DATAS_EQ
+from spinorama.image_export import write_public_webp
 from spinorama.misc import fingerprint_paths, sanitize_filename
 from spinorama.plot import plot_eqs
 from spinorama.loaders.rew_eq import parse_eq_iir_rews
 
 
 VERSION = 0.2
-EQ_COMPARE_CACHE_VERSION = "eq-compare-cache-v1"
+EQ_COMPARE_CACHE_VERSION = "eq-compare-cache-v2-public-images"
 EQ_COMPARE_CACHE_MANIFEST = ".cache/eq-compare-manifest.json"
 
 
 def eq_compare_filename(data):
-    """Return the generated comparison path for one speaker."""
-    return "{}/{} {}/eq_compare.json".format(
+    """Return the public (WebP) comparison path for one speaker."""
+    return "{}/{} {}/eq_compare.webp".format(
         CPATH_DIST_SPEAKERS, sanitize_filename(data["brand"]), sanitize_filename(data["model"])
+    )
+
+
+def eq_compare_private_filename(data):
+    """Return the private (JSON) comparison path for one speaker."""
+    return "{}/{} {}/eq_compare.json".format(
+        CPATH_PRIVATE_SPEAKERS, sanitize_filename(data["brand"]), sanitize_filename(data["model"])
     )
 
 
@@ -145,9 +153,14 @@ def _eq_compare_worker(speaker_data, force):
     if not needs_update:
         return
     fig, filename, deps = build_eq_figure_and_filename(speaker_data)
+    private_filename = eq_compare_private_filename(speaker_data)
     if os.path.exists(os.path.dirname(filename)):
-        with open(filename, "w", encoding="utf-8") as f_d:
+        os.makedirs(os.path.dirname(private_filename), exist_ok=True)
+        with open(private_filename, "w", encoding="utf-8") as f_d:
             f_d.write(fig.to_json())
+        if os.environ.get("SPINORAMA_EMIT_PUBLIC_IMAGES", "1") != "0":
+            seed = f"{speaker_data['brand']} {speaker_data['model']}/eq_compare"
+            write_public_webp(fig, filename, seed, source="Generated EQ")
 
 
 def main(force, batch_size):

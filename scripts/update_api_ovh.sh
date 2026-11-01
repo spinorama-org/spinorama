@@ -25,11 +25,18 @@ RUNDIR=/home/spin/run/spin-api
 DIST_TARGET=ovhspin:$DISTDIR
 RUN_TARGET=ovhspin:$RUNDIR
 
-rsync -arv ./scripts/gunicorn_start.sh requirements-api.txt requirements-api.lock $RUN_TARGET
+rsync -arv ./scripts/gunicorn_start.sh requirements-api.txt requirements-api.lock requirements-render.txt $RUN_TARGET
 rsync -arv ./datas/*.py $RUN_TARGET/datas
 rsync -arv ./dist/json/metadata.json* ./dist/json/headphone.json* $DIST_TARGET/assets
 rsync -arv ./datas/headphones/ $DIST_TARGET/assets/headphones
+# Pristine curve JSON and trace bundles (private; the API and the compare
+# renderer serve them, the public website never does).
+rsync -arv ./dist-private/speakers/ $DIST_TARGET/speakers
+rsync -arv ./dist-private/headphones/ $DIST_TARGET/headphones-graphs 2>/dev/null || true
 rsync -arv --exclude '__pycache__/' ./src/api "$RUN_TARGET/"
+rsync -arv ./scripts/compare_render_server.py $RUN_TARGET/scripts/
+rsync -arv ./src/spinorama/__init__.py ./src/spinorama/_logging.py ./src/spinorama/image_export.py ./src/spinorama/compare_render.py $RUN_TARGET/src/spinorama/
+rsync -arv ./conf/etc/systemd/spinorama-render.service $RUN_TARGET/etc/
 rsync ./conf/etc/supervisor/conf.d/spinorama-app.conf $RUN_TARGET/etc
 rsync ./conf/etc/nginx/sites-available/spinorama-api "$RUN_TARGET/etc/spinorama-api.nginx"
 rsync ./conf/etc/nginx/snippets/deny-repository-metadata.conf "$RUN_TARGET/etc/"
@@ -46,5 +53,7 @@ echo "sudo cp $RUNDIR/etc/spinorama-api.nginx /etc/nginx/sites-available/spinora
 echo "sudo nginx -t"
 echo "sudo supervisorctl restart spinorama-api"
 echo "sudo nginx -s reload"
+echo "4. Set SPINORAMA_FINGERPRINT_SECRET in the API service environment (keep it stable and private), then restart the API."
+echo "5. Compare renderer: pip install -r requirements-render.txt into its venv, install conf/etc/systemd/spinorama-render.service, systemctl enable --now spinorama-render"
 
 exit 0;
