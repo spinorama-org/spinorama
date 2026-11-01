@@ -138,23 +138,23 @@ class TestVersionFingerprint(unittest.TestCase):
 
 
 class TestVersionOutputFresh(unittest.TestCase):
-    def test_requires_base_and_eq_json(self):
+    def test_requires_base_and_eq_webp(self):
         with tempfile.TemporaryDirectory() as temporary_dir:
             dist = os.path.join(temporary_dir, "dist", "speakers")
             base = os.path.join(dist, "Speaker X", "ASR", "v1")
             os.makedirs(base)
-            Path(os.path.join(base, "CEA2034.json")).write_text("{}", encoding="utf-8")
+            Path(os.path.join(base, "CEA2034.webp")).write_text("{}", encoding="utf-8")
 
             fresh = generate_graphs.version_output_fresh
             self.assertTrue(fresh(dist, "Speaker X", "ASR", "v1", needs_eq=False))
             self.assertFalse(fresh(dist, "Speaker X", "ASR", "v1", needs_eq=True))
 
             os.makedirs(f"{base}_eq")
-            Path(os.path.join(f"{base}_eq", "CEA2034.json")).write_text("{}", encoding="utf-8")
+            Path(os.path.join(f"{base}_eq", "CEA2034.webp")).write_text("{}", encoding="utf-8")
             self.assertTrue(fresh(dist, "Speaker X", "ASR", "v1", needs_eq=True))
 
-            # Empty JSON files do not count as output.
-            Path(os.path.join(base, "CEA2034.json")).write_text("", encoding="utf-8")
+            # Empty WebP files do not count as output.
+            Path(os.path.join(base, "CEA2034.webp")).write_text("", encoding="utf-8")
             self.assertFalse(fresh(dist, "Speaker X", "ASR", "v1", needs_eq=False))
 
     def test_strips_vendors_prefix_like_build_filename(self):
@@ -162,7 +162,7 @@ class TestVersionOutputFresh(unittest.TestCase):
             dist = os.path.join(temporary_dir, "dist", "speakers")
             base = os.path.join(dist, "Speaker X", "ABC", "v1")
             os.makedirs(base)
-            Path(os.path.join(base, "CEA2034.json")).write_text("{}", encoding="utf-8")
+            Path(os.path.join(base, "CEA2034.webp")).write_text("{}", encoding="utf-8")
             self.assertTrue(
                 generate_graphs.version_output_fresh(
                     dist, "Speaker X", "Vendors-ABC", "v1", needs_eq=False
@@ -206,7 +206,7 @@ class TestStaleDecisions(unittest.TestCase):
     def _write_outputs_and_shard(self, dist_root, cache_dir):
         out_dir = os.path.join(dist_root, "Speaker X", "ASR", "v1")
         os.makedirs(out_dir)
-        Path(os.path.join(out_dir, "CEA2034.json")).write_text("{}", encoding="utf-8")
+        Path(os.path.join(out_dir, "CEA2034.webp")).write_text("{}", encoding="utf-8")
         os.makedirs(cache_dir, exist_ok=True)
         Path(os.path.join(cache_dir, f"{generate_common.cache_key('Speaker X')}.h5")).write_bytes(
             b""
@@ -326,7 +326,7 @@ class TestManifestRoundTrip(unittest.TestCase):
                 )
                 out_dir = os.path.join(dist_root, "Speaker X", "ASR", "v1")
                 os.makedirs(out_dir)
-                Path(os.path.join(out_dir, "CEA2034.json")).write_text("{}", encoding="utf-8")
+                Path(os.path.join(out_dir, "CEA2034.webp")).write_text("{}", encoding="utf-8")
                 os.makedirs(cache_dir, exist_ok=True)
                 Path(
                     os.path.join(cache_dir, f"{generate_common.cache_key('Speaker X')}.h5")
@@ -373,7 +373,7 @@ class TestV3Migration(unittest.TestCase):
             dist_root = os.path.join(data_root, "dist", "speakers")
             out_dir = os.path.join(dist_root, "Speaker X", "ASR", "v1")
             os.makedirs(out_dir)
-            Path(os.path.join(out_dir, "CEA2034.json")).write_text("{}", encoding="utf-8")
+            Path(os.path.join(out_dir, "CEA2034.webp")).write_text("{}", encoding="utf-8")
             os.makedirs(cache_dir, exist_ok=True)
             Path(
                 os.path.join(cache_dir, f"{generate_common.cache_key('Speaker X')}.h5")
@@ -418,7 +418,7 @@ class TestV3Migration(unittest.TestCase):
             dist_root = os.path.join(data_root, "dist", "speakers")
             out_dir = os.path.join(dist_root, "Speaker X", "ASR", "v1")
             os.makedirs(out_dir)
-            Path(os.path.join(out_dir, "CEA2034.json")).write_text("{}", encoding="utf-8")
+            Path(os.path.join(out_dir, "CEA2034.webp")).write_text("{}", encoding="utf-8")
             os.makedirs(cache_dir, exist_ok=True)
             Path(
                 os.path.join(cache_dir, f"{generate_common.cache_key('Speaker X')}.h5")
@@ -533,7 +533,7 @@ class TestGeneratorMechanism(unittest.TestCase):
             dist_root = os.path.join(data_root, "dist", "speakers")
             out_dir = os.path.join(dist_root, "Speaker X", "ASR", "v1")
             os.makedirs(out_dir)
-            Path(os.path.join(out_dir, "CEA2034.json")).write_text("{}", encoding="utf-8")
+            Path(os.path.join(out_dir, "CEA2034.webp")).write_text("{}", encoding="utf-8")
             os.makedirs(cache_dir, exist_ok=True)
             Path(
                 os.path.join(cache_dir, f"{generate_common.cache_key('Speaker X')}.h5")

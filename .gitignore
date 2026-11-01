@@ -15,6 +15,8 @@ TAGS
 .coverage
 /dist
 /dist-dotli
+/dist-private
+/dist-gpui
 tmp
 extracted
 /logs

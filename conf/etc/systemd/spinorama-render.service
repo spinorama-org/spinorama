@@ -1,0 +1,26 @@
+[Unit]
+Description=Spinorama comparison picture renderer
+After=network.target
+
+[Service]
+Type=simple
+User=spin
+Group=spin
+WorkingDirectory=/home/spin/run/spin-api
+Environment="PYTHONPATH=/home/spin/run/spin-api/src:/home/spin/run/spin-api"
+Environment="SPINORAMA_PRIVATE_SPEAKERS_ROOT=/var/www/html/spinorama-api/speakers"
+Environment="SPINORAMA_COMPARE_CACHE=/var/cache/spinorama/compare"
+Environment="SPINORAMA_COMPARE_HOST=127.0.0.1"
+Environment="SPINORAMA_COMPARE_PORT=8765"
+Environment="SPINORAMA_COMPARE_MAX_RENDERS_PER_MIN=20"
+ExecStart=/home/spin/run/spin-api/.venv/bin/python /home/spin/run/spin-api/scripts/compare_render_server.py
+Restart=on-failure
+RestartSec=5
+Nice=10
+CPUQuota=50%
+MemoryMax=256M
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

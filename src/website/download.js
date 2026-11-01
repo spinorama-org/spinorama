@@ -68,40 +68,65 @@ function getVersion(metaSpeakers, speaker, origin, version) {
     return version;
 }
 
-function constructSpeakerUrl(metaSpeakers, graph, speaker, origin, version) {
-    // console.log('constructSpeakerUrl ' + graph + ' speaker=' + speaker + ' origin=' + origin + ' version=' + version)
-    const url =
-        urlSite +
-        'speakers/' +
-        sanitizeFilename(speaker) +
-        '/' +
-        getOrigin(metaSpeakers, speaker, origin) +
-        '/' +
-        getVersion(metaSpeakers, speaker, origin, version) +
-        '/' +
-        processGraph(graph) +
-        '.json';
-    return url;
+export function getSpeakerDescriptor(metaSpeakers, speaker, origin, version) {
+    return {
+        speaker: sanitizeFilename(speaker),
+        origin: getOrigin(metaSpeakers, speaker, origin),
+        version: getVersion(metaSpeakers, speaker, origin, version),
+    };
 }
 
-export function getSpeakerData(metaSpeakers, graph, speaker, origin, version) {
-    // console.log('getSpeakerData ' + graph + ' speaker=' + speaker + ' origin=' + origin + ' version=' + version)
+export function constructSpeakerImageUrl(metaSpeakers, graph, speaker, origin, version) {
+    const d = getSpeakerDescriptor(metaSpeakers, speaker, origin, version);
+    return (
+        urlSite +
+        'speakers/' +
+        encodeURIComponent(d.speaker) +
+        '/' +
+        encodeURIComponent(d.origin) +
+        '/' +
+        encodeURIComponent(d.version) +
+        '/' +
+        encodeURIComponent(processGraph(graph)) +
+        '.webp'
+    );
+}
 
-    const url = constructSpeakerUrl(metaSpeakers, graph, speaker, origin, version);
-    // console.log('fetching url=' + url)
-    const spec = fetch(url, { headers: { 'Accept-Encoding': 'bz2, gzip, deflate', 'Content-Type': 'application/json' } })
-        .then((response) => {
-            if (!response.ok) {
-                console.log('ERROR getSpeaker failed for ' + url + 'with error: ' + response.status);
-                return null;
-            }
-            return response.json();
-        })
-        .catch((error) => {
-            console.log('ERROR getSpeaker failed for ' + url + 'with error: ' + error);
-            return null;
-        });
-    return spec;
+const COMPARE_OVERLAY_MEASUREMENTS = new Set([
+    'CEA2034',
+    'CEA2034 Normalized',
+    'On Axis',
+    'Estimated In-Room Response',
+    'Estimated In-Room Response Normalized',
+    'Early Reflections',
+    'Horizontal Reflections',
+    'Vertical Reflections',
+    'SPL Horizontal',
+    'SPL Horizontal Normalized',
+    'SPL Vertical',
+    'SPL Vertical Normalized',
+    'Horizontal Directivity',
+    'Vertical Directivity',
+]);
+
+export function isCompareOverlayMeasurement(graph) {
+    return COMPARE_OVERLAY_MEASUREMENTS.has(graph);
+}
+
+export function constructCompareUrl(metaSpeakers, graph, sideA, sideB, width) {
+    const a = getSpeakerDescriptor(metaSpeakers, sideA.speaker, sideA.origin, sideA.version);
+    const b = getSpeakerDescriptor(metaSpeakers, sideB.speaker, sideB.origin, sideB.version);
+    const params = new URLSearchParams({
+        measurement: processGraph(graph),
+        a_speaker: a.speaker,
+        a_origin: a.origin,
+        a_version: a.version,
+        b_speaker: b.speaker,
+        b_origin: b.origin,
+        b_version: b.version,
+        w: String(width),
+    });
+    return '/compare-render/compare.webp?' + params.toString();
 }
 
 function cleanupCache(url) {

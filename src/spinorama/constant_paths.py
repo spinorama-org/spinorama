@@ -49,6 +49,12 @@ CPATH_DIST_METADATA_JSON = f"{CPATH_DIST_JSON}/metadata.json"
 CPATH_DIST_EQDATA_JSON = f"{CPATH_DIST_JSON}/eqdata.json"
 CPATH_DIST_SPEAKERS = f"{CPATH_DIST}/speakers"
 CPATH_DIST_PICTURES = f"{CPATH_DIST}/pictures"
+
+# private generated data: never deployed to a web root. Holds the pristine
+# Plotly JSON and comparison trace bundles served only through the API.
+CPATH_PRIVATE = f"{CPATH}/dist-private"
+CPATH_PRIVATE_SPEAKERS = f"{CPATH_PRIVATE}/speakers"
+CPATH_PRIVATE_HEADPHONES = f"{CPATH_PRIVATE}/headphones"
 CPATH_DIST_HEADPHONE_JSON = f"{CPATH_DIST_JSON}/headphone.json"
 
 # headphone generated output
