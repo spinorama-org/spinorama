@@ -78,6 +78,11 @@ Missing, invalid, expired or revoked keys return **401 Unauthorized**. If your
 key is lost or exposed, email Pierre to revoke it and request a replacement.
 Access may be revoked. An unavailable key database returns **503**, not anonymous access.
 
+Curve responses carry an imperceptible per-key variation (at most 0.05 dB)
+used only to identify the source of leaked or commercially republished data.
+Downloads are logged per key. Redistribution of API data therefore remains
+traceable to the key it was served to.
+
 ErinsAudioCorner measurements are not available through this API.
 
 ## Measurement data license

@@ -3,14 +3,17 @@
 
 from __future__ import annotations
 
+import json
+import logging
 import os
 from glob import glob
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.encoders import jsonable_encoder
 from starlette.responses import FileResponse, JSONResponse
 
+from ..fingerprint import amplitude_from_env, apply_to_figure, secret_from_env
 from ..state import (
     API_VERSION,
     KNOWN_MEASUREMENTS,
@@ -22,6 +25,7 @@ from ..state import (
 
 
 router = APIRouter(prefix=f"/{API_VERSION}", tags=["speaker"])
+logger = logging.getLogger("api.download")
 
 
 def _vendor_stripped(origin: str) -> str:
@@ -121,6 +125,7 @@ async def get_speaker_measurements_data(
     speaker_name: str,
     speaker_version: str,
     measurement_name: str,
+    request: Request,
     measurement_format: Annotated[str | None, Query(max_length=5)] = "json",
     metadata: dict = Depends(load_metadata),  # noqa: B008
 ):
@@ -197,9 +202,32 @@ async def get_speaker_measurements_data(
             "error": f"Speaker {speaker_name} does not have precomputed {measurement_name} in format {measurement_format} for origin {origin} and version {speaker_version}!"
         }
 
+    key_id = getattr(request.state, "api_key_id", "anonymous")
+    resource = f"{speaker_name}/{origin}/{speaker_version}/{measurement_name}"
+    logger.info("download key=%s resource=%s format=%s", key_id, resource, measurement_format)
+
     if measurement_format == "json":
         with open(measurement_file, "r", encoding="utf8") as fd:
-            return fd.readlines()
+            text = fd.read()
+        secret = secret_from_env()
+        if not secret:
+            return [text]
+        try:
+            payload = json.loads(text)
+            if not isinstance(payload, dict):
+                return [text]
+            fingerprinted = apply_to_figure(
+                payload,
+                key_id=str(key_id),
+                resource=resource,
+                secret=secret,
+                amplitude_db=amplitude_from_env(),
+            )
+            # Preserve the legacy wire shape: a JSON array holding the figure text.
+            return [json.dumps(fingerprinted)]
+        except (json.JSONDecodeError, ValueError):
+            logger.exception("fingerprint failed for %s; serving pristine", resource)
+            return [text]
 
     if measurement_format in ("webp", "jpg", "png"):
         return FileResponse(measurement_file)

@@ -3,7 +3,6 @@
   <head>
     <title>Measurements for speaker ${speaker}</title>
     <%include file="head.html"/>
-    <%include file="head_vega.html"/>
   </head>
   <body>
     <%include file="nav_simple.html"/>
@@ -142,23 +141,12 @@
     <!-- Mobile view: sequential-->
     <div class="tab-pane is-active display:block" id="pane-2">
       <div class="section">
-      <%include file="graph_shortcuts.html"/>
-      <div class="graph-grid">
+            <div class="graph-grid">
         % for freq in g_freq:
         <div class="graph-cell">
           <div class="box has-background-white-bis m-1 p-1">
             <a href="${g_key}/${freq | space2url}.html">
-              <div id="${g_key}-${freq}"></div>
-              <script type="module">
-               import { displayGraph } from "/js/graph-${versions['CACHE']}${min}.js";
-               let graph = "${g_key}/${freq | space2url}";
-               let graph_json = "./" + graph + ".json";
-               const spec = fetch(graph_json)
-                 .then( (response) => response.json() )
-                 .then( (spec) => {
-                   displayGraph("${freq}", graph_json, "${g_key}-${freq}", spec, true, 1);
-                 });
-              </script>
+              <img src="./${g_key}/${freq | space2url}.webp" alt="${freq} graph for ${speaker}" loading="lazy" decoding="async" style="max-width:100%;height:auto">
             </a>
           </div>
         </div>
@@ -168,17 +156,7 @@
           <div class="box has-background-white-bis m-1 p-1">
             <a href="${g_key}/${contour | unmeltC, space2url}.html">
               %if '3D' not in contour:
-              <div id="${g_key}-${contour}"></div>
-              <script type="module">
-               import { displayGraph } from "/js/graph-${versions['CACHE']}${min}.js";
-               let graph = "${g_key}/${contour | space2url}";
-               let graph_json = "./" + graph + ".json";
-               const spec = fetch(graph_json)
-                 .then( (response) => response.json() )
-                 .then( (spec) => {
-                   displayGraph("${contour}", graph_json, "${g_key}-${contour}", spec, true, 1);
-                 });
-              </script>
+              <img src="./${g_key}/${contour | space2url}.webp" alt="${contour} graph for ${speaker}" loading="lazy" decoding="async" style="max-width:100%;height:auto">
               %endif
             </a>
           </div>
@@ -192,7 +170,7 @@
               <div id="${g_key}-${contour}">
                 <div class="buttons">
                   <button class="button is-info">
-                    Click for a 3D view of ${contour}!
+                    Click for the ${contour} graph
                   </button>
                 </div>
               </div>
@@ -217,8 +195,7 @@
     % if has_eq_graphs:
     <div class="tab-pane display:none" id="pane-3">
       <div class="section">
-      <%include file="graph_shortcuts.html"/>
-      <div class="graph-grid">
+            <div class="graph-grid">
         % if has_eq_graphs:
 <%
           g_key_eq = g_key.replace("_eq", "") + "_eq"
@@ -227,17 +204,7 @@
         <div class="graph-cell">
           <div class="box has-background-white-bis m-1 p-1">
             <a href="${g_key_eq}/${freq | space2url}.html">
-              <div id="${g_key_eq}-${freq}"></div>
-              <script type="module">
-               import { displayGraph } from "/js/graph-${versions['CACHE']}${min}.js";
-               let graph = "${g_key_eq}/${freq | space2url}";
-               let graph_json = "./" + graph + ".json";
-               const spec = fetch(graph_json)
-                 .then( (response) => response.json() )
-                 .then( (spec) => {
-                   displayGraph("${freq}", graph_json, "${g_key_eq}-${freq}", spec, true, 1);
-                 });
-              </script>
+              <img src="./${g_key_eq}/${freq | space2url}.webp" alt="${freq} graph with EQ for ${speaker}" loading="lazy" decoding="async" style="max-width:100%;height:auto">
             </a>
           </div>
         </div>
@@ -246,17 +213,7 @@
         <div class="graph-cell">
           <div class="box has-background-white-bis m-1 p-1">
             <a href="${g_key_eq}/${contour | unmeltC, space2url}.html">
-              <div id="${g_key_eq}-${contour}"></div>
-              <script type="module">
-               import { displayGraph } from "/js/graph-${versions['CACHE']}${min}.js";
-               let graph = "${g_key_eq}/${contour | space2url}";
-               let graph_json = "./" + graph + ".json";
-               const spec = fetch(graph_json)
-                 .then( (response) => response.json() )
-                 .then( (spec) => {
-                   displayGraph("${contour}", graph_json, "${g_key_eq}-${contour}", spec, true, 1);
-                 });
-              </script>
+              <img src="./${g_key_eq}/${contour | space2url}.webp" alt="${contour} graph with EQ for ${speaker}" loading="lazy" decoding="async" style="max-width:100%;height:auto">
             </a>
           </div>
         </div>
@@ -278,29 +235,17 @@
     <!-- Desktop view: Ref vs. EQ views-->
     % if has_eq_graphs:
     <div class="tab-pane display:none" id="pane-4">
-      <%include file="graph_shortcuts.html"/>
-      <div class="graph-grid graph-grid--pairs">
+            <div class="graph-grid graph-grid--pairs">
 <%
           g_key_eq = g_key.replace("_eq", "") + "_eq"
 %>
         % for freq in g_freq:
         <div class="graph-cell">
-          <div id="comp-${g_key}-${freq}"></div>
+          <img src="./${g_key}/${freq | space2url}.webp" alt="${freq} reference graph for ${speaker}" loading="lazy" decoding="async" style="max-width:100%;height:auto">
         </div>
         <div class="graph-cell">
-          <div id="comp-${g_key_eq}-${freq}"></div>
+          <img src="./${g_key_eq}/${freq | space2url}.webp" alt="${freq} graph with EQ for ${speaker}" loading="lazy" decoding="async" style="max-width:100%;height:auto">
         </div>
-        <script type="module">
-          import { displayGraph } from "/js/graph-${versions['CACHE']}${min}.js";
-          const reference = "${g_key}/${freq | space2url}";
-          const equalized = "${g_key_eq}/${freq | space2url}";
-          Promise.all([reference, equalized].map(graph =>
-            fetch("./" + graph + ".json").then(response => response.json())
-          )).then(([refSpec, eqSpec]) => {
-            displayGraph("${freq}", reference + ".json", "comp-${g_key}-${freq}", refSpec, false, 1, eqSpec);
-            displayGraph("${freq}", equalized + ".json", "comp-${g_key_eq}-${freq}", eqSpec, false, 1, refSpec);
-          });
-        </script>
         % endfor
       </div>
     </div>

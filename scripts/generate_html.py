@@ -297,7 +297,7 @@ def generate_measurement(
     # prefixes have already been removed by graph generation.
     dirname = os.path.join(cpaths.CPATH_DIST_SPEAKERS, sanitize_filename(speaker_name), origin)
     index_name = "{0}/index_{1}.html".format(dirname, key)
-    spider_filename = "{}/{}/spider.json".format(
+    spider_filename = "{}/{}/spider.webp".format(
         cpaths.CPATH_DIST_SPEAKERS, sanitize_filename(speaker_name)
     )
 
@@ -523,9 +523,9 @@ def main():
                     continue
                 default_name = os.path.basename(default)
                 main_df[speaker_name][origin_name][default_name] = {}
-                graphs = glob(default + "/*.json")
+                graphs = glob(default + "/*.webp") + glob(default + "/*.json")
                 for graph in graphs:
-                    g = os.path.basename(graph).replace(".json", "")
+                    g = os.path.splitext(os.path.basename(graph))[0]
                     main_df[speaker_name][origin_name][default_name][g] = {}
 
     # configure Mako
@@ -671,7 +671,7 @@ def main():
                 # Check which graphs exist
                 freq_graphs = {}
                 for gname in HEADPHONE_FREQ_FILTER:
-                    gpath = "{}/{}/{}.json".format(hp_dist_dir, default_m, gname)
+                    gpath = "{}/{}/{}.webp".format(hp_dist_dir, default_m, gname)
                     if os.path.isfile(gpath):
                         freq_graphs[gname] = {}
 
@@ -692,7 +692,7 @@ def main():
                         continue
                     graphs = {}
                     for gname in eq_graph_names:
-                        gpath = os.path.join(eq_subdir_path, "{}.json".format(gname))
+                        gpath = os.path.join(eq_subdir_path, "{}.webp".format(gname))
                         if os.path.isfile(gpath):
                             graphs[gname] = {}
                     if not graphs:

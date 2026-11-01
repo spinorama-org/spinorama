@@ -107,7 +107,7 @@ GRAPH_CACHE_SCHEMA = "speaker-graph-cache-v4"
 GENERATOR_MECHANISM = "code-v1"
 # Bump this for a downstream rendering dependency that is not covered by the
 # focused rendering-function source below.
-GRAPH_OUTPUT_CACHE_VERSION = "graphs-v1"
+GRAPH_OUTPUT_CACHE_VERSION = "graphs-v2-public-images"
 ACTIVATE_TRACING: bool = True
 
 # Set up logger
@@ -332,12 +332,20 @@ def build_sanitized_map() -> dict[str, str]:
 
 
 def _directory_has_json(path: str) -> bool:
-    """Check that a graph output directory holds at least one non-empty JSON file."""
+    """Check a graph output directory holds public WebP graph output.
+
+    Public pictures are the deliverable checked here; pristine JSON lives
+    in the private tree. When image emission is disabled
+    (``SPINORAMA_EMIT_PUBLIC_IMAGES=0``), a version cannot be considered
+    fresh from the public tree alone, so JSON presence also counts —
+    such builds are data-only refreshes, not site builds.
+    """
+    suffixes = (".webp",) if os.environ.get("SPINORAMA_EMIT_PUBLIC_IMAGES", "1") != "0" else (".webp", ".json")
     try:
         with os.scandir(path) as entries:
             return any(
                 entry.is_file()
-                and entry.name.endswith(".json")
+                and entry.name.endswith(suffixes)
                 and entry.stat().st_size > 0
                 for entry in entries
             )
@@ -1340,9 +1348,12 @@ def generate_headphone_graphs(data_dir: str, force: bool):
     import json as json_module
     import numpy as np
 
+    from spinorama.image_export import source_label  # noqa: PLC0415
+
     hp_measurements_dir = os.path.join(data_dir, "datas", "headphones")
     hp_targets_dir = os.path.join(data_dir, "datas", "headphone_targets")
     hp_dist_dir = os.path.join(data_dir, "dist", "headphones")
+    hp_private_dir = os.path.join(data_dir, "dist-private", "headphones")
 
     if not os.path.isdir(hp_measurements_dir):
         logger.info("No headphone measurements directory, skipping")
@@ -1388,6 +1399,23 @@ def generate_headphone_graphs(data_dir: str, force: bool):
                 "showlegend": True,
             },
         }
+
+
+    def write_hp_graph(spec, public_dir, private_dir, name, seed, source=""):
+        """Write a headphone graph as private JSON + bundle and public WebP."""
+        import plotly.graph_objects as go  # noqa: PLC0415
+
+        from spinorama.image_export import write_public_webp, write_trace_bundle  # noqa: PLC0415
+
+        os.makedirs(public_dir, exist_ok=True)
+        os.makedirs(private_dir, exist_ok=True)
+        with open(os.path.join(private_dir, f"{name}.json"), "w") as f:
+            json_module.dump(spec, f)
+        fig = go.Figure(data=spec["data"], layout=spec["layout"])
+        fig.update_layout(width=1200, height=800)
+        write_trace_bundle(fig, name, os.path.join(private_dir, "traces", f"{name}.json"))
+        if os.environ.get("SPINORAMA_EMIT_PUBLIC_IMAGES", "1") != "0":
+            write_public_webp(fig, os.path.join(public_dir, f"{name}.webp"), seed, source=source)
 
     # Load target curves
     targets = {}
@@ -1441,10 +1469,12 @@ def generate_headphone_graphs(data_dir: str, force: bool):
 
         # Output directory
         out_dir = os.path.join(hp_dist_dir, hp_name, origin, default_m)
+        private_out_dir = os.path.join(hp_private_dir, hp_name, origin, default_m)
         os.makedirs(out_dir, exist_ok=True)
+        os.makedirs(private_out_dir, exist_ok=True)
 
         # Check if we need to regenerate
-        fr_json = os.path.join(out_dir, "Frequency Response.json")
+        fr_json = os.path.join(private_out_dir, "Frequency Response.json")
         if (
             not force
             and os.path.isfile(fr_json)
@@ -1470,8 +1500,7 @@ def generate_headphone_graphs(data_dir: str, force: bool):
             }
         ]
         spec_fr = make_plotly_json(traces_fr, f"{brand} {model} - Frequency Response")
-        with open(fr_json, "w") as f:
-            json_module.dump(spec_fr, f)
+        write_hp_graph(spec_fr, out_dir, private_out_dir, "Frequency Response", f"{hp_name}/Frequency Response", source=source_label(origin, default_m))
 
         # Graph 2: Frequency Response Compensated (with target)
         target_key = target_for_shape.get(shape, "harman_overear_2019")
@@ -1505,9 +1534,7 @@ def generate_headphone_graphs(data_dir: str, force: bool):
                 },
             ]
             spec_comp = make_plotly_json(traces_comp, f"{brand} {model} - vs Harman Target")
-            comp_json = os.path.join(out_dir, "Frequency Response Compensated.json")
-            with open(comp_json, "w") as f:
-                json_module.dump(spec_comp, f)
+            write_hp_graph(spec_comp, out_dir, private_out_dir, "Frequency Response Compensated", f"{hp_name}/Frequency Response Compensated", source=source_label(origin, default_m))
 
             # Graph 3: Target Deviation
             deviation = spl_norm - target_norm
@@ -1533,9 +1560,7 @@ def generate_headphone_graphs(data_dir: str, force: bool):
                 },
             ]
             spec_dev = make_plotly_json(traces_dev, f"{brand} {model} - Target Deviation")
-            dev_json = os.path.join(out_dir, "Target Deviation.json")
-            with open(dev_json, "w") as f:
-                json_module.dump(spec_dev, f)
+            write_hp_graph(spec_dev, out_dir, private_out_dir, "Target Deviation", f"{hp_name}/Target Deviation", source=source_label(origin, default_m))
 
         # Generate EQ graphs if corresponding EQ files exist
         eq_dir = os.path.join(cpaths.CPATH_DATAS_HEADPHONE_EQ, hp_name)
@@ -1558,8 +1583,10 @@ def generate_headphone_graphs(data_dir: str, force: bool):
                 if not peq:
                     continue
                 eq_out_dir = "{}_eq_{}".format(out_dir, eq_key)
+                eq_private_out_dir = "{}_eq_{}".format(private_out_dir, eq_key)
                 os.makedirs(eq_out_dir, exist_ok=True)
-                fr_eq_json = os.path.join(eq_out_dir, "Frequency Response.json")
+                os.makedirs(eq_private_out_dir, exist_ok=True)
+                fr_eq_json = os.path.join(eq_private_out_dir, "Frequency Response.json")
                 if (
                     not force
                     and os.path.isfile(fr_eq_json)
@@ -1602,8 +1629,7 @@ def generate_headphone_graphs(data_dir: str, force: bool):
                     traces_fr_eq,
                     f"{brand} {model} - Frequency Response ({display})",
                 )
-                with open(fr_eq_json, "w") as f:
-                    json_module.dump(spec_fr_eq, f)
+                write_hp_graph(spec_fr_eq, eq_out_dir, eq_private_out_dir, "Frequency Response", f"{hp_name}/{eq_key}/Frequency Response", source=source_label(origin, default_m))
                 deviation = spl_norm - target_norm
                 mean_deviation = mean_in_band(freq, deviation, MEAN_MIN, MEAN_MAX)
                 deviation = deviation - mean_deviation
@@ -1641,9 +1667,7 @@ def generate_headphone_graphs(data_dir: str, force: bool):
                     traces_dev_eq,
                     f"{brand} {model} - Target Deviation ({display})",
                 )
-                dev_eq_json = os.path.join(eq_out_dir, "Target Deviation.json")
-                with open(dev_eq_json, "w") as f:
-                    json_module.dump(spec_dev_eq, f)
+                write_hp_graph(spec_dev_eq, eq_out_dir, eq_private_out_dir, "Target Deviation", f"{hp_name}/{eq_key}/Target Deviation", source=source_label(origin, default_m))
                 logger.info("Generated EQ graphs for %s %s", hp_name, eq_key)
 
         count += 1

@@ -23,8 +23,9 @@ API_VERSION = "v1"
 CURRENT_VERSION = 0
 SOFTWARE_VERSION = f"{API_VERSION}.{CURRENT_VERSION}"
 
-APIFILES = "/var/www/html/spinorama-api"
-SPINFILES = "/var/www/html/spinorama-prod/speakers"
+APIFILES = os.environ.get("SPINORAMA_API_FILES", "/var/www/html/spinorama-api")
+# Pristine graph JSON lives in the private API tree, never under a web root.
+SPINFILES = os.environ.get("SPINORAMA_SPINFILES", f"{APIFILES}/speakers")
 METADATA = f"{APIFILES}/assets/metadata.json"
 HEADPHONE_METADATA = f"{APIFILES}/assets/headphone.json"
 HEADPHONE_FILES = f"{APIFILES}/assets/headphones"

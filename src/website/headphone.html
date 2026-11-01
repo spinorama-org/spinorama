@@ -3,7 +3,6 @@
   <head>
     <title>Measurements for headphone ${headphone}</title>
     <%include file="head.html"/>
-    <%include file="head_vega.html"/>
   </head>
   <body>
     <%include file="nav_simple.html"/>
@@ -30,17 +29,7 @@
         <div class="graph-cell">
           <div class="box has-background-white-bis m-1 p-1">
             <a href="${g_key}/${freq | space2url}.html">
-	      <div id="${g_key}-${freq}"></div>
-	      <script type="module">
-	       import { displayGraph } from "/js/graph-${versions['CACHE']}${min}.js";
-	       let graph = "${g_key}/${freq}";
-	       let graph_json = "./" + graph + ".json";
-	       const spec = fetch(graph_json)
-	         .then( (response) => response.json() )
-	         .then( (spec) => {
-	           displayGraph("${freq}", graph_json, "${g_key}-${freq}", spec, true, 1);
-	         });
-	      </script>
+	      <img src="./${g_key}/${freq | space2url}.webp" alt="${freq} graph for ${headphone}" loading="lazy" decoding="async" style="max-width:100%;height:auto">
             </a>
           </div>
         </div>
@@ -58,17 +47,7 @@
           <div class="graph-cell">
             <div class="box has-background-white-bis m-1 p-1">
               <a href="${eq_flat_key}/${freq | space2url}.html">
-                <div id="${eq_flat_key}-${freq}"></div>
-                <script type="module">
-                  import { displayGraph } from "/js/graph-${versions['CACHE']}${min}.js";
-                  let graph = "${eq_flat_key}/${freq}";
-                  let graph_json = "./" + graph + ".json";
-                  fetch(graph_json)
-                    .then((response) => response.json())
-                    .then((spec) => {
-                      displayGraph("${freq}", graph_json, "${eq_flat_key}-${freq}", spec, true, 1);
-                    });
-                </script>
+                <img src="./${eq_flat_key}/${freq | space2url}.webp" alt="${freq} graph for ${headphone}" loading="lazy" decoding="async" style="max-width:100%;height:auto">
               </a>
             </div>
           </div>
@@ -87,17 +66,7 @@
           <div class="graph-cell">
             <div class="box has-background-white-bis m-1 p-1">
               <a href="${eq_score_key}/${freq | space2url}.html">
-                <div id="${eq_score_key}-${freq}"></div>
-                <script type="module">
-                  import { displayGraph } from "/js/graph-${versions['CACHE']}${min}.js";
-                  let graph = "${eq_score_key}/${freq}";
-                  let graph_json = "./" + graph + ".json";
-                  fetch(graph_json)
-                    .then((response) => response.json())
-                    .then((spec) => {
-                      displayGraph("${freq}", graph_json, "${eq_score_key}-${freq}", spec, true, 1);
-                    });
-                </script>
+                <img src="./${eq_score_key}/${freq | space2url}.webp" alt="${freq} graph for ${headphone}" loading="lazy" decoding="async" style="max-width:100%;height:auto">
               </a>
             </div>
           </div>

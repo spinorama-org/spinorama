@@ -985,22 +985,39 @@ export function setGraphOptions(inputGraphsData, windowWidth, windowHeight, outp
         layout.height = result.height;
         layout.margin = result.margin;
 
-        // Reserve only the actual title block plus a small gap. Adding the
-        // old base margin and multiline allowance double-counted title space.
+        // Reserve the actual title block plus a small gap. A merged
+        // two-speaker compare title additionally keeps the standard top
+        // margin as a floor (plus wrapped lines), since its bottom-anchored
+        // block grows upward from the plot area.
+        const isMergedCompare = inputGraphsData.length > 1 && outputNumberGraphs === 1;
         const titleTop = 12;
-        const titleHeight = titleInfo.lines * titleInfo.fontSize * 1.4;
-        const topMargin = Math.ceil(titleTop + titleHeight + graphTitleGap)
-            + (outputGraphProperties.isGlobe ? 50 : 0);
+        const titleLineHeight = titleInfo.fontSize * 1.4;
+        const titleHeight = titleInfo.lines * titleLineHeight;
+        let topMargin = Math.ceil(titleTop + titleHeight + graphTitleGap) + (outputGraphProperties.isGlobe ? 50 : 0);
+        if (isMergedCompare && titleInfo.lines > 1) {
+            const standardTopMargin = isCompact ? graphMarginTopSmall : graphMarginTop;
+            const wrappedAllowance = (titleInfo.lines - 1) * titleLineHeight;
+            topMargin = Math.max(topMargin, Math.ceil(standardTopMargin + wrappedAllowance + graphTitleGap));
+        }
         layout.height += topMargin - layout.margin.t;
         layout.margin.t = topMargin;
 
-        // Anchor the entire multiline title at the container top in both modes.
-        // Compact charts otherwise inherit Plotly's baseline anchor, letting the
-        // second line fall into the plotting area.
+        // Merged compare titles anchor from their bottom edge, one
+        // graphTitleGap above the plot area, so wrapped lines grow upward
+        // into the reserved margin. Single graphs (including side-by-side
+        // reference/EQ cells) anchor at the container top so paired cells
+        // keep their titles aligned when their layouts are reconciled.
         layout.title.yref = 'container';
-        layout.title.yanchor = 'top';
-        layout.title.y = 1;
-        layout.title.pad = { t: titleTop };
+        if (isMergedCompare) {
+            const plotTop = layout.height - layout.margin.t;
+            layout.title.yanchor = 'bottom';
+            layout.title.y = (plotTop + graphTitleGap) / layout.height;
+            layout.title.pad = { b: 0 };
+        } else {
+            layout.title.yanchor = 'top';
+            layout.title.y = 1;
+            layout.title.pad = { t: titleTop };
+        }
 
         if (result.legend.hidden) {
             layout.showlegend = false;

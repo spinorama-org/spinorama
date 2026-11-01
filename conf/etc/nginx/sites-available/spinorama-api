@@ -12,6 +12,8 @@ server {
     # All requests, including downloads, go through FastAPI's key check.
     # /docs, /redoc and /openapi.json are public in FastAPI.
     location / {
+        limit_req zone=spin_anonymous_api burst=10 nodelay;
+        limit_req_status 429;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;

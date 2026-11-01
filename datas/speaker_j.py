@@ -1635,6 +1635,35 @@ speakers_info_j: SpeakerDatabase = {
             },
         },
     },
+    "JBL L150 Classic": {
+        "brand": "JBL",
+        "model": "L150 Classic",
+        "type": "passive",
+        "price": "10000",
+        "shape": "floorstanders",
+        "amount": "pair",
+        "default_measurement": "vendor",
+        "measurements": {
+            "vendor": {
+                "origin": "Vendors-JBL",
+                "format": "webplotdigitizer",
+                "quality": "low",
+                "review": "https://global.jbl.com/floor-standing-speakers/L150-CLASSIC.html",
+                "quality": "low",
+                "review_published": "20261031",
+                "specifications": {
+                    "sensitivity": 88,
+                    "impedance": 4,
+                    "size": {
+                        "height": 935,
+                        "width": 470,
+                        "depth": 540,
+                    },
+                    "weight": 58.5,
+                },
+            },
+        },
+    },
     "JBL 104": {
         "brand": "JBL",
         "model": "104",
