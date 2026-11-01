@@ -22,10 +22,16 @@ import copy
 import math
 from typing import Callable
 
+import plotly.graph_objects as go
 import plotly.io
 
 from spinorama import logger, setup_logger
-from spinorama.constant_paths import CPATH_DIST_SPEAKERS, DEFAULT_FREQ_RANGE
+from spinorama.constant_paths import (
+    CPATH_DIST_SPEAKERS,
+    CPATH_PRIVATE_SPEAKERS,
+    DEFAULT_FREQ_RANGE,
+)
+from spinorama.image_export import source_label, write_public_webp_batch, write_trace_bundle
 from spinorama.measurements import Measurements
 from spinorama.misc import measurements_valid_freq_range, sanitize_filename, write_multiformat
 from spinorama.filters.peq import Peq, peq_preamp_gain
@@ -67,6 +73,35 @@ def set_dist_speakers_root(path: str | None) -> None:
 def get_dist_speakers_root() -> str:
     """Return the effective speaker graph output root."""
     return _DIST_SPEAKERS_ROOT if _DIST_SPEAKERS_ROOT is not None else CPATH_DIST_SPEAKERS
+
+
+_PRIVATE_SPEAKERS_ROOT: str | None = None
+
+
+def set_private_speakers_root(path: str | None) -> None:
+    """Direct private graph JSON output to ``path`` (``None`` restores default)."""
+    global _PRIVATE_SPEAKERS_ROOT  # noqa: PLW0603 -- intentional process-wide output redirect
+    _PRIVATE_SPEAKERS_ROOT = path
+
+
+def get_private_speakers_root() -> str:
+    """Return the private root holding pristine JSON and trace bundles.
+
+    ``SPINORAMA_PRIVATE_SPEAKERS_ROOT`` wins over the programmatic setter so
+    deployments can point at the API data tree without code changes. When a
+    public dist root ending in ``dist/speakers`` was set explicitly, the
+    sibling ``dist-private/speakers`` of the same data directory is used.
+    """
+    env = os.environ.get("SPINORAMA_PRIVATE_SPEAKERS_ROOT")
+    if env:
+        return env
+    if _PRIVATE_SPEAKERS_ROOT is not None:
+        return _PRIVATE_SPEAKERS_ROOT
+    if _DIST_SPEAKERS_ROOT is not None:
+        dist = pathlib.Path(_DIST_SPEAKERS_ROOT)
+        if dist.name == "speakers" and dist.parent.name == "dist":
+            return str(dist.parent.parent / "dist-private" / "speakers")
+    return CPATH_PRIVATE_SPEAKERS
 
 
 def scale_params(params, factor):
@@ -396,9 +431,9 @@ def display_radar_vertical(
     return display_radar(m, "vertical", graph_params, valid_freq_range)
 
 
-def build_filename(speaker, origin, version, graph_name, file_ext) -> str:
+def build_filename(speaker, origin, version, graph_name, file_ext, root=None) -> str:
     filedir = (
-        get_dist_speakers_root()
+        (root if root is not None else get_dist_speakers_root())
         + "/"
         + sanitize_filename(speaker)
         + "/"
@@ -412,6 +447,79 @@ def build_filename(speaker, origin, version, graph_name, file_ext) -> str:
         filename += "_large"
     filename += "." + file_ext
     return filename
+
+
+def _minus6_directivity_figure(contour_fig, title: str):
+    """Derive a -6 dB directivity figure from a normalized contour figure.
+
+    Replicates, at build time, the curve the website previously computed
+    in the browser from contour JSON: for each frequency, the first
+    positive and negative angles where the normalized SPL drops below
+    -6 dB, linearly interpolated between measurement angles.
+    """
+    if contour_fig is None or not getattr(contour_fig, "data", None):
+        return None
+    trace = next((t for t in contour_fig.data if getattr(t, "z", None) is not None), None)
+    if trace is None:
+        return None
+    try:
+        freqs = [float(v) for v in trace.x]
+        angles = [float(str(v).rstrip("°")) for v in trace.y]
+        z_rows = [[float(v) for v in row] for row in trace.z]
+    except (TypeError, ValueError):
+        return None
+    if not freqs or len(z_rows) != len(angles):
+        return None
+    order = sorted(range(len(angles)), key=lambda i: angles[i])
+    angles = [angles[i] for i in order]
+    z_rows = [z_rows[i] for i in order]
+
+    def crossing(indices, fi):
+        for ai in indices:
+            if z_rows[ai][fi] >= -6:
+                continue
+            prev = ai - 1 if angles[ai] > 0 else ai + 1
+            if 0 <= prev < len(angles) and z_rows[prev][fi] >= -6 and z_rows[ai][fi] != z_rows[prev][fi]:
+                ratio = (-6 - z_rows[prev][fi]) / (z_rows[ai][fi] - z_rows[prev][fi])
+                return angles[prev] + ratio * (angles[ai] - angles[prev])
+            return angles[ai]
+        return None
+
+    pos_x, pos_y, neg_x, neg_y = [], [], [], []
+    pos_idx = [i for i, a in enumerate(angles) if a > 0]
+    neg_idx = [i for i, a in enumerate(angles) if a < 0][::-1]
+    for fi, freq in enumerate(freqs):
+        if any(len(row) <= fi for row in z_rows):
+            continue
+        angle_pos = crossing(pos_idx, fi)
+        if angle_pos is not None:
+            pos_x.append(freq)
+            pos_y.append(angle_pos)
+        angle_neg = crossing(neg_idx, fi)
+        if angle_neg is not None:
+            neg_x.append(freq)
+            neg_y.append(angle_neg)
+    if not pos_x and not neg_x:
+        return None
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(x=pos_x, y=pos_y, mode="lines", name="+",
+                   line=dict(color="#4758a9", width=2), showlegend=False)
+    )
+    fig.add_trace(
+        go.Scatter(x=neg_x, y=neg_y, mode="lines", name="-",
+                   line=dict(color="#745470", width=2, dash="dot"), showlegend=False)
+    )
+    fig.update_layout(
+        title=dict(text=title),
+        width=800,
+        height=400,
+        xaxis=dict(type="log", range=[math.log10(100), math.log10(20000)], title="Freq. (Hz)"),
+        yaxis=dict(range=[-180, 180], dtick=90, title="deg", zeroline=True),
+        margin=dict(l=50, r=20, t=50, b=40),
+    )
+    return fig
 
 
 def build_title(origin: str, version: str, speaker: str, title: str, iir: Peq) -> str:
@@ -639,6 +747,14 @@ def build_figures(
         for op_title, op_call in _RADAR_VIEWS:
             graphs[op_title] = op_call(m, radar_params, valid_freq_range)
 
+        for src_name, dst_name, dst_title in (
+            ("SPL Horizontal Contour Normalized", "Horizontal Directivity", "Horizontal Directivity (-6dB)"),
+            ("SPL Vertical Contour Normalized", "Vertical Directivity", "Vertical Directivity (-6dB)"),
+        ):
+            derived = _minus6_directivity_figure(graphs.get(src_name), dst_title)
+            if derived is not None:
+                graphs[dst_name] = derived
+
     for key, graph in graphs.items():
         if graph is None:
             continue
@@ -660,28 +776,62 @@ def emit_figures(
     version_key: str,
     force_print: bool,
 ) -> int:
-    """Write each non-empty figure to its JSON sidecar. IO only.
+    """Write each figure as private JSON + bundle and a public WebP image.
 
-    Returns the number of JSON files actually written.
+    The pristine Plotly JSON and the comparison trace bundle go to the
+    private speakers root (served only through the key-gated API); the
+    public dist tree receives only the hardened WebP picture. Set
+    ``SPINORAMA_EMIT_PUBLIC_IMAGES=0`` to skip image rendering (faster
+    data-only rebuilds); JSON and bundles are still written privately.
+
+    Returns the number of figures actually written.
     """
     updated = 0
+    emit_images = os.environ.get("SPINORAMA_EMIT_PUBLIC_IMAGES", "1") != "0"
+    private_root = get_private_speakers_root()
+    source = source_label(origin, version_key)
+    image_items: list[tuple[object, str, str, str]] = []
     for key, graph in graphs.items():
         if graph is None:
             continue
 
-        filename_json = build_filename(speaker, origin, version_key, key, "json")
-        if not (
-            force_print or not os.path.exists(filename_json) or os.path.getsize(filename_json) == 0
-        ):
+        filename_json = build_filename(
+            speaker, origin, version_key, key, "json", root=private_root
+        )
+        filename_webp = build_filename(speaker, origin, version_key, key, "webp")
+        json_stale = (
+            force_print
+            or not os.path.exists(filename_json)
+            or os.path.getsize(filename_json) == 0
+        )
+        webp_stale = emit_images and (
+            force_print
+            or not os.path.exists(filename_webp)
+            or os.path.getsize(filename_webp) == 0
+        )
+        if not json_stale and not webp_stale:
             continue
 
         try:
-            content = graph.to_json()
-            with open(filename_json, "w", encoding="utf-8") as f_d:
-                f_d.write(content)
+            if json_stale:
+                content = graph.to_json()
+                with open(filename_json, "w", encoding="utf-8") as f_d:
+                    f_d.write(content)
                 updated += 1
+                bundle_path = os.path.join(
+                    os.path.dirname(filename_json),
+                    "traces",
+                    key.replace("_smoothed", "") + ".json",
+                )
+                write_trace_bundle(graph, key, bundle_path)
+            if webp_stale:
+                seed = f"{speaker}/{origin}/{version_key}/{key}"
+                image_items.append((graph, filename_webp, seed, source))
         except Exception:
             logger.exception("Got unkown error for %s: %s", speaker, filename_json)
+
+    if image_items:
+        write_public_webp_batch(image_items)
 
     return updated
 

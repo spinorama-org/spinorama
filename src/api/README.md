@@ -39,6 +39,18 @@ across deployments and back it up privately using SQLite's backup facility.
 A missing or unreadable database denies access with 503. Missing, invalid,
 revoked and expired credentials return 401; docs remain available.
 
+## Per-key data fingerprinting
+
+Set `SPINORAMA_FINGERPRINT_SECRET` in the API service environment to enable
+leak tracing. Curve responses (speaker JSON, headphone CSV) then carry a
+deterministic per-key variation of at most 0.05 dB (default 0.03 dB, tunable
+with `SPINORAMA_FINGERPRINT_AMPLITUDE_DB`). Pristine files on disk are never
+modified; the variation exists only in response bytes. Downloads are logged
+by the `api.download` logger with key ID and resource. To identify a suspected
+leak offline, run `scripts/fingerprint_identify.py` with the pristine file,
+the suspected copy, its resource string, and candidate key IDs. Keep the
+secret private and stable: rotating it changes every fingerprint.
+
 ## Client usage
 
 ```bash

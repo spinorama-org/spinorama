@@ -28,7 +28,8 @@ import pathlib
 import plotly.io
 from spinorama import logger, setup_logger
 from spinorama.ltype import OptimResult
-from spinorama.constant_paths import CPATH_DIST_SPEAKERS
+from spinorama.constant_paths import CPATH_DIST_SPEAKERS, CPATH_PRIVATE_SPEAKERS
+from spinorama.image_export import source_label, write_public_webp, write_trace_bundle
 from spinorama.misc import (
     graph_melt,
     measurements_complete_spl,
@@ -47,7 +48,7 @@ from autoeq.auto_plot import graph_results as auto_graph_results
 from autoeq.auto_strategy import optim_strategy
 
 
-EQ_IMAGE_CACHE_VERSION = "eq-images-v1"
+EQ_IMAGE_CACHE_VERSION = "eq-images-v2-public-images"
 
 
 def _eq_image_cache_key(
@@ -263,10 +264,12 @@ def print_auto_graphs_seq(
             # Decide whether to write based on existing files and force flag
             force = not optim_config["generate_images_only"]
 
-            for ext in (".json", ".png", ".jpg", ".webp"):
-                filename = f"{base_filename}{ext}"
+            private_base = base_filename.replace(
+                CPATH_DIST_SPEAKERS, CPATH_PRIVATE_SPEAKERS, 1
+            )
+            for ext in (".json", ".webp"):
+                filename = f"{private_base if ext == '.json' else base_filename}{ext}"
                 outputs_to_cache.append(filename)
-                # Ensure parent directory exists
                 pathlib.Path(filename).parent.mkdir(parents=True, exist_ok=True)
 
                 needs_write = (
@@ -274,25 +277,25 @@ def print_auto_graphs_seq(
                     or not os.path.exists(filename)
                     or (os.path.exists(filename) and os.path.getsize(filename) == 0)
                 )
-                # print('1: {} {}'.format(filename, needs_write))
                 if needs_write:
                     if ext == ".json":
                         content = graph.to_json()
                         with open(filename, "w", encoding="utf-8") as f_d:
                             f_d.write(content)
-                    else:
-                        # Use the first graph's dimensions
-                        try:
-                            img_width = int(graph.layout.width)
-                            img_height = int(graph.layout.height)
-                        except Exception:
-                            # Fallback defaults if layout is missing dimensions
-                            graph.layout.width = 800
-                            graph.layout.height = 600
-                        graphs_to_print.append(graph)
-                        widths_to_print.append(img_width)
-                        heights_to_print.append(img_height)
-                        filenames_to_print.append(filename)
+                        write_trace_bundle(
+                            graph,
+                            name,
+                            os.path.join(
+                                os.path.dirname(filename), "traces", f"filters_{name}.json"
+                            ),
+                        )
+                    elif os.environ.get("SPINORAMA_EMIT_PUBLIC_IMAGES", "1") != "0":
+                        write_public_webp(
+                            graph,
+                            filename,
+                            f"{speaker_name}/{origin}/filters_{name}",
+                            source=source_label(origin, name),
+                        )
                     logger.debug("queueing graph %s", filename)
 
         # if len(filenames_to_print) > 0:

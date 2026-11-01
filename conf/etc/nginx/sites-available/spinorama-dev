@@ -1,18 +1,23 @@
 ##
-# Default server configuration
+# Dev server configuration (mirrors prod bot protection for testing)
 #
 server {
     include /etc/nginx/snippets/deny-repository-metadata.conf;
         listen 443 ssl http2; # managed by Certbot
 	server_name dev.spinorama.org; # managed by Certbot
+	access_log /var/log/nginx/spinorama-dev.access.log spinorama_bot;
+	error_log /var/log/nginx/spinorama-dev.error.log warn;
         ssl_certificate /etc/letsencrypt/live/dev.spinorama.org/fullchain.pem; # managed by Certbot
         ssl_certificate_key /etc/letsencrypt/live/dev.spinorama.org/privkey.pem; # managed by Certbot
         include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
         ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
+	include /etc/nginx/conf.d/headers-strict.conf;
 
         root /var/www/html/spinorama-dev;
-	autoindex on;
+	autoindex off;
 	index index.html;
 	expires modified +1s;
 	add_header Cache-Control no-cache;
+
+	include /etc/nginx/snippets/bot-protection-server.conf;
 }

@@ -35,14 +35,15 @@ from generate_common import (
     find_metadata_file,
 )
 
-from spinorama.constant_paths import CPATH_DIST_SPEAKERS, CPATH_DATAS_EQ
+from spinorama.constant_paths import CPATH_DIST_SPEAKERS, CPATH_PRIVATE_SPEAKERS, CPATH_DATAS_EQ
+from spinorama.image_export import write_public_webp
 from spinorama.misc import fingerprint_paths, sanitize_filename
 from spinorama.filters.scores import scores_apply_filter, noscore_apply_filter
 from spinorama.measurements import Measurements
 from spinorama.loaders.rew_eq import parse_eq_iir_rews
 
 VERSION = 0.2
-RADAR_CACHE_VERSION = "radar-cache-v1"
+RADAR_CACHE_VERSION = "radar-cache-v2-public-images"
 RADAR_CACHE_MANIFEST = pathlib.Path(".cache/radar-manifest.json")
 
 logger = logging.getLogger("spinorama")
@@ -121,8 +122,13 @@ def print_radar(meta_data, scale, speaker_data):
     if measurement.get("pref_rating") is None or measurement.get("estimates") is None:
         logger.debug("skipping measurement no pref_rating and no estimates")
         return
-    filename = "{}/{} {}/spider.json".format(
+    filename = "{}/{} {}/spider.webp".format(
         CPATH_DIST_SPEAKERS,
+        sanitize_filename(meta_data["brand"]),
+        sanitize_filename(meta_data["model"]),
+    )
+    private_filename = "{}/{} {}/spider.json".format(
+        CPATH_PRIVATE_SPEAKERS,
         sanitize_filename(meta_data["brand"]),
         sanitize_filename(meta_data["model"]),
     )
@@ -210,11 +216,16 @@ def print_radar(meta_data, scale, speaker_data):
     fig = go.Figure()
     for gd in graph_data:
         fig.add_trace(go.Scatterpolar(gd))
+    layout["title"] = {"text": "Improvements made by EQ"}
     fig.update_layout(layout)
     content = fig.to_json()
     if os.path.exists(os.path.dirname(filename)):
-        with open(filename, "w", encoding="utf-8") as f_d:
+        os.makedirs(os.path.dirname(private_filename), exist_ok=True)
+        with open(private_filename, "w", encoding="utf-8") as f_d:
             f_d.write(content)
+        if os.environ.get("SPINORAMA_EMIT_PUBLIC_IMAGES", "1") != "0":
+            seed = f"{meta_data['brand']} {meta_data['model']}/spider"
+            write_public_webp(fig, filename, seed, source="Generated EQ")
 
 
 def radar_cache_fingerprint(json_filename, eq_filename):
@@ -240,7 +251,7 @@ def radar_output_paths(jsmeta):
         if measurement.get("pref_rating") is None or measurement.get("estimates") is None:
             continue
         outputs.append(
-            "{}/{} {}/spider.json".format(
+            "{}/{} {}/spider.webp".format(
                 CPATH_DIST_SPEAKERS,
                 sanitize_filename(meta_data["brand"]),
                 sanitize_filename(meta_data["model"]),
