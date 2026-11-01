@@ -81,8 +81,6 @@ class SelectSpeakerPage(QWidget):
         opt_row.addWidget(self.rb_existing)
         opt_row.addWidget(self.rb_new)
         opt_row.addStretch(1)  # Add stretch to center the buttons
-        # Add a spacer widget to push the radio buttons to the bottom later
-        layout.addLayout(opt_row)
 
         # Existing speaker selection with search (grouped so we can hide/show cleanly)
         self.speakers_cb = QComboBox()
@@ -120,7 +118,6 @@ class SelectSpeakerPage(QWidget):
 
         self.rb_existing.toggled.connect(_toggle)  # type: ignore[arg-type]
         self.rb_new.toggled.connect(_toggle)  # type: ignore[arg-type]
-        layout.addWidget(self.existing_group)
         layout.addWidget(self.new_group)
 
         # Move the radio buttons row to the bottom by adding a stretch
@@ -1561,6 +1558,16 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    # Validate a requested speaker before creating any Qt objects. Exiting
+    # with a live QApplication/main window can crash during interpreter
+    # teardown (observed as SIGSEGV instead of exit code 1).
+    requested_data = None
+    if args.speaker:
+        requested_data = api.get_speaker_metadata(args.speaker)
+        if not requested_data:
+            print(f"Warning: speaker '{args.speaker}' not found.", file=sys.stderr)
+            sys.exit(1)
+
     app = cast(QApplication, QApplication.instance() or QApplication([]))
     # Ensure QSettings works with stable identifiers
     QCoreApplication.setOrganizationName("Spinorama")
@@ -1569,12 +1576,11 @@ def main() -> None:
     apply_app_style(app, read_theme_from_settings())
     win = MetadataMainWindow()
 
-    # If a specific speaker is requested, try to load it and jump to Step 2
+    # If a specific speaker is requested, jump to Step 2 with its data.
     if args.speaker:
-        data = api.get_speaker_metadata(args.speaker)
-        if not data:
-            print(f"Warning: speaker '{args.speaker}' not found.", file=sys.stderr)
-            sys.exit(1)
+        if requested_data is None:  # validated above; keeps type checkers honest
+            raise RuntimeError(f"speaker '{args.speaker}' metadata missing after validation")
+        data = requested_data
         # Prefer reusing existing flow: set selection and navigate
         try:
             idx = win.page_select.speakers_cb.findText(args.speaker)

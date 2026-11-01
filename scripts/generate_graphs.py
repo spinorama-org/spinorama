@@ -1348,6 +1348,8 @@ def generate_headphone_graphs(data_dir: str, force: bool):
     import json as json_module
     import numpy as np
 
+    from spinorama.image_export import source_label  # noqa: PLC0415
+
     hp_measurements_dir = os.path.join(data_dir, "datas", "headphones")
     hp_targets_dir = os.path.join(data_dir, "datas", "headphone_targets")
     hp_dist_dir = os.path.join(data_dir, "dist", "headphones")
@@ -1403,7 +1405,7 @@ def generate_headphone_graphs(data_dir: str, force: bool):
         """Write a headphone graph as private JSON + bundle and public WebP."""
         import plotly.graph_objects as go  # noqa: PLC0415
 
-        from spinorama.image_export import source_label, write_public_webp, write_trace_bundle  # noqa: PLC0415
+        from spinorama.image_export import write_public_webp, write_trace_bundle  # noqa: PLC0415
 
         os.makedirs(public_dir, exist_ok=True)
         os.makedirs(private_dir, exist_ok=True)
