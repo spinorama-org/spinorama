@@ -25,15 +25,14 @@ RUNDIR=/home/spin/run/spin-api
 DIST_TARGET=ovhspin:$DISTDIR
 RUN_TARGET=ovhspin:$RUNDIR
 
-rsync -arv ./scripts/gunicorn_start.sh requirements-api.txt requirements-api.lock requirements-render.txt $RUN_TARGET
-rsync -arv ./datas/*.py $RUN_TARGET/datas
+rsync -arv ./scripts/spinorama-api-start.sh requirements-render.txt $RUN_TARGET
+rsync -arv ./datas/origins.toml $RUN_TARGET/datas/
 rsync -arv ./dist/json/metadata.json* ./dist/json/headphone.json* $DIST_TARGET/assets
 rsync -arv ./datas/headphones/ $DIST_TARGET/assets/headphones
 # Pristine curve JSON and trace bundles (private; the API and the compare
 # renderer serve them, the public website never does).
 rsync -arv ./dist-private/speakers/ $DIST_TARGET/speakers
 rsync -arv ./dist-private/headphones/ $DIST_TARGET/headphones-graphs 2>/dev/null || true
-rsync -arv --exclude '__pycache__/' ./src/api "$RUN_TARGET/"
 rsync -arv ./scripts/compare_render_server.py $RUN_TARGET/scripts/
 rsync -arv ./src/spinorama/__init__.py ./src/spinorama/_logging.py ./src/spinorama/image_export.py ./src/spinorama/compare_render.py $RUN_TARGET/src/spinorama/
 rsync -arv ./conf/etc/systemd/spinorama-render.service $RUN_TARGET/etc/
@@ -41,10 +40,10 @@ rsync ./conf/etc/supervisor/conf.d/spinorama-app.conf $RUN_TARGET/etc
 rsync ./conf/etc/nginx/sites-available/spinorama-api "$RUN_TARGET/etc/spinorama-api.nginx"
 rsync ./conf/etc/nginx/snippets/deny-repository-metadata.conf "$RUN_TARGET/etc/"
 
-echo "1. as spin user"
-echo "cd $RUNDIR && python3 -m venv .venv && source .venv/bin/activate && pip install -U 'pip>=26.2' && pip install -U -r requirements-api.lock"
+echo "1. Deploy the Rust API binary (built on the dev host): ./scripts/deploy_binaries.sh prod"
+echo "   The binary lands in ~/spinorama-bin/spinorama-api; no Python venv is needed anymore."
 
-echo "2. Initialize the key database once: cd $RUNDIR && .venv/bin/python -m api.keys init"
+echo "2. Initialize the key database once: ~/spinorama-bin/spinorama-api keys init"
 echo "The updated API refuses all requests until authentication is configured."
 echo "3. Install the proxy configuration and restart (see api/README.md for key administration):"
 echo "sudo cp $RUNDIR/etc/spinorama-app.conf /etc/supervisor/conf.d/"

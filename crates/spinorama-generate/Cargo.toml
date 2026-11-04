@@ -1,0 +1,45 @@
+[package]
+name = "spinorama-generate"
+version.workspace = true
+edition.workspace = true
+publish = false
+autobins = false
+description = "Rust replacement slices for spinorama generate_graphs/generate_peqs (CEA2034 figures, PEQ optimization)"
+
+# Member of the spinorama workspace (see the root Cargo.toml);
+# dependency versions are inherited from [workspace.dependencies].
+
+[[bin]]
+name = "generate-graph"
+path = "src/bin/generate-graph.rs"
+
+[[bin]]
+name = "generate-peq"
+path = "src/bin/generate-peq.rs"
+
+[[bin]]
+name = "generate-meta"
+path = "src/bin/generate-meta.rs"
+
+[dependencies]
+anyhow.workspace = true
+autoeq-workflow.workspace = true
+base64.workspace = true
+d3rs.workspace = true
+flate2.workspace = true
+fontdue.workspace = true
+image.workspace = true
+mimalloc.workspace = true
+ndarray.workspace = true
+num-complex.workspace = true
+rustfft.workspace = true
+webp.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+tar.workspace = true
+zip.workspace = true
+
+[dev-dependencies]
+base64.workspace = true
+serde_json.workspace = true

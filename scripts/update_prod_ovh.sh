@@ -26,6 +26,13 @@ if [ "${command}" -ne 0 ]; then
 else
     echo "OK checking for DEV site in PROD"
 fi
+command=$(grep -l "https://dev.spinorama.org" dist/js/meta-*.js dist/js/meta-*.min.js 2>/dev/null | wc -l)
+if [ "${command}" -ne 0 ]; then
+    echo "KO found DEV url in PROD JS bundle (dist/js/meta-*)"
+    exit 1;
+else
+    echo "OK checking for DEV site in PROD JS bundle"
+fi
 command=$(grep spinorama.internet-box.ch dist/*.html | wc -l)
 if [ "${command}" -ne 0 ]; then
     echo "KO found old dev url in prod site"

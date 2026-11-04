@@ -1,1 +1,0 @@
-../src/graphextract/scripts/extract_distortion.py

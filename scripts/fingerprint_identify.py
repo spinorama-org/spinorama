@@ -27,7 +27,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.api.fingerprint import amplitude_from_env, rank_candidates, secret_from_env
+from api_fingerprint import amplitude_from_env, rank_candidates, secret_from_env
 
 
 def load_figure(path: str) -> dict:

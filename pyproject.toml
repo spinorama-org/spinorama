@@ -22,7 +22,7 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
-exclude = ["graphextract", "graphextract.*", "spinorama.extract", "spinorama.extract.*"]
+exclude = []
 
 [tool.pyright]
 include = [".", "src", "tests"]

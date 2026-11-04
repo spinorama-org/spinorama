@@ -1,0 +1,702 @@
+# Measurement origins for spinorama.org.
+[origins]
+
+[origins.ASR]
+logo = "dist/metadata/asr.png"
+logo-small = "dist/metadata/asr-small.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "http://www.audiosciencereview.com"
+
+[origins.ErinsAudioCorner]
+logo = "dist/metadata/eac.png"
+logo-small = "dist/metadata/eac.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.erinsaudiocorner.com"
+
+[origins.Misc]
+logo = ""
+logo-small = ""
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.aforara.com"
+
+[origins.Princeton]
+logo = "dist/metadata/3d3a.jpg"
+logo-small = "dist/metadata/3d3a.jpg"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 500
+url = "https://www.princeton.edu/3D3A/Directivity.html"
+
+[origins.SpeakerLab]
+logo = ""
+logo-small = ""
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+
+[origins.Vendors-A-for-Ara]
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = ""
+
+[origins."Vendors-AIA Cinema"]
+logo = "dist/metadata/apple.png"
+logo-small = "dist/metadata/apple.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.aia-cinema.com"
+
+[origins."Vendors-Aalto Speakers"]
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://aaltospeakers.fi"
+
+[origins."Vendors-Alcons Audio"]
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.alconsaudio.com/"
+
+[origins."Vendors-Amate Audio"]
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.amateaudio.com/"
+
+[origins.Vendors-Apple]
+logo = "dist/metadata/apple.png"
+logo-small = "dist/metadata/apple.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.apple.com"
+
+[origins."Vendors-Ascend Acoustics"]
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.ascendacoustics.com/"
+
+[origins.Vendors-AsciLab]
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.audiolabinsight.com/"
+
+[origins."Vendors-Attack Audio"]
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.attack.com.br"
+
+[origins."Vendors-Audio First Design"]
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.audiofirstdesign.uk.co/"
+
+[origins.Vendors-Audiofocus]
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.audiofocus.eu/"
+
+[origins.Vendors-Axiom]
+logo = "dist/metadata/axiom.png"
+logo-small = "dist/metadata/axiom.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.axiompro.com/"
+
+[origins."Vendors-BIC America"]
+logo = "dist/metadata/BIC America.jpg"
+logo-small = "dist/metadata/BIC America.jpg"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://bicamerica.com/"
+
+[origins.Vendors-BiAmp]
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://biamp.com/"
+
+[origins.Vendors-Bose]
+logo = "dist/metadata/bose.png"
+logo-small = "dist/metadata/bose.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.bose.com"
+
+[origins."Vendors-Bowers & Wilkins"]
+logo = "dist/metadata/bose.png"
+logo-small = "dist/metadata/bose.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.bowerswilkins.com/"
+
+[origins."Vendors-Buchardt Audio"]
+logo = "dist/metadata/buchardt-audio.png"
+logo-small = "dist/metadata/buchardt-audio-small.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.buchardtaudio.com"
+
+[origins."Vendors-Cambridge Soundworks"]
+logo = "dist/metadata/.png"
+logo-small = "dist/metadata/.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://en.wikipedia.org/wiki/Cambridge_SoundWorks"
+
+[origins."Vendors-Coda Audio"]
+logo = "dist/metadata/.png"
+logo-small = "dist/metadata/.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://codaaudio.com/"
+
+[origins."Vendors-DAS Audio"]
+logo = "dist/metadata/dasaudio.png"
+logo-small = "dist/metadata/dasaudio.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.dasaudio.com"
+
+[origins."Vendors-DB Audiotechnik"]
+logo = "dist/metadata/dbaudio.png"
+logo-small = "dist/metadata/dbaudio.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.dbaudio.com"
+
+[origins.Vendors-Danley]
+logo = "dist/metadata/danley.png"
+logo-small = "dist/metadata/danley.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.danleysoundlabs.com"
+
+[origins.Vendors-Devialet]
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.davialet.com"
+
+[origins.Vendors-Dolby]
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://professional.dolby.com/product/dolby-audio-solutions-for-movie-theaters/"
+
+[origins.Vendors-EAW]
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://eaw.com"
+
+[origins.Vendors-EV]
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.electrovoice.com"
+
+[origins.Vendors-FBT]
+logo = "dist/metadata/fbt.png"
+logo-small = "dist/metadata/fbt.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.fbt.it"
+
+[origins."Vendors-Fulcrum Acoustic"]
+logo = "dist/metadata/fulcrum-acoustic.png"
+logo-small = "dist/metadata/fulcrum-acoustic.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.fulcrum-acoustic.com"
+
+[origins.Vendors-GGNTKT]
+logo = "dist/metadata/ggntkt.png"
+logo-small = "dist/metadata/ggntkt-small.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.ggntkt.de"
+
+[origins.Vendors-Genelec]
+logo = "dist/metadata/genelec.png"
+logo-small = "dist/metadata/genelec.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.genelec.com"
+
+[origins."Vendors-HK Audio"]
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://hkaudio.com/"
+
+[origins.Vendors-Infinity]
+logo = "dist/metadata/infinity.png"
+logo-small = "dist/metadata/infinity-small.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.infinityspeakers.com"
+
+[origins.Vendors-JBL]
+logo = "dist/metadata/jbl.png"
+logo-small = "dist/metadata/jbl-small.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.jbl.com"
+
+[origins.Vendors-JTR]
+logo = "dist/metadata/jtr.png"
+logo-small = "dist/metadata/jtr-small.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 50
+url = "https://www.jtrspeakers.com"
+
+[origins."Vendors-K ARRAY"]
+logo = "dist/metadata/k-array.png"
+logo-small = "dist/metadata/k-array.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.k-array.com"
+
+[origins.Vendors-KEF]
+logo = "dist/metadata/kef.png"
+logo-small = "dist/metadata/kef.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.kef.com"
+
+[origins.Vendors-KLH]
+logo = "dist/metadata/klh.png"
+logo-small = "dist/metadata/klh-small.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.klh.com"
+
+[origins."Vendors-KME Sound"]
+logo = "dist/metadata/k-array.png"
+logo-small = "dist/metadata/k-array.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.kmesound.com"
+
+[origins."Vendors-KV2 Audio"]
+logo = "dist/metadata/k-array.png"
+logo-small = "dist/metadata/k-array.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.kv2audio.com"
+
+[origins.Vendors-Kali]
+logo = "dist/metadata/kali.png"
+logo-small = "dist/metadata/kali-small.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.kaliaudio.com"
+
+[origins."Vendors-Kling Freitag"]
+logo = "dist/metadata/kling-freitag.png"
+logo-small = "dist/metadata/kling-freitag.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.kling-freitag.de"
+
+[origins.Vendors-Klipsch]
+logo = "dist/metadata/klipsch.png"
+logo-small = "dist/metadata/klipsch.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.klipsch.com"
+
+[origins.Vendors-L-Acoustics]
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.l-acoustics.com/"
+
+[origins."Vendors-LD Systems"]
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.ld-systems.com/"
+
+[origins.Vendors-Magico]
+logo = "dist/metadata/magico.png"
+logo-small = "dist/metadata/magico.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.magicoaudio.com"
+
+[origins."Vendors-March Audio"]
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://marchaudio.com/"
+
+[origins."Vendors-Martin Audio"]
+logo = "dist/metadata/martinaudio.png"
+logo-small = "dist/metadata/martinaudio.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.martinaudio.com"
+
+[origins.Vendors-Mesanovic]
+logo = "dist/metadata/mesanovic.png"
+logo-small = "dist/metadata/mesanovic.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.mesanovicmicrophones.com"
+
+[origins."Vendors-Meyer Sound"]
+logo = "dist/metadata/meyersound.png"
+logo-small = "dist/metadata/meyersound.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.meyersound.com"
+
+[origins.Vendors-MoFi]
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://mofi.com/"
+
+[origins.Vendors-Neumann]
+logo = "dist/metadata/neumann.png"
+logo-small = "dist/metadata/neumann.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.neumann.com"
+
+[origins.Vendors-Nexo]
+logo = "dist/metadata/nexo.png"
+logo-small = "dist/metadata/nexo.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.nexo-sa.com"
+
+[origins.Vendors-Novacoustic]
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.novacoustic.de"
+
+[origins.Vendors-Onesystems]
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.onesystems.com"
+
+[origins."Vendors-Optimal Audio"]
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.optimal-audio.co.uk"
+
+[origins.Vendors-PMC]
+logo = "dist/metadata/pmc.png"
+logo-small = "dist/metadata/pmc.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.pmc-speakers.com/"
+
+[origins."Vendors-PSI Audio"]
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.psiaudio.swis"
+
+[origins.Vendors-Paradigm]
+logo = "dist/metadata/paradigm.png"
+logo-small = "dist/metadata/paradigm.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.paradigm.com"
+
+[origins.Vendors-Perlisten]
+logo = "dist/metadata/perlisten.png"
+logo-small = "dist/metadata/perlisten.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.perlistenaudio.com"
+
+[origins.Vendors-Pioneer]
+logo = "dist/metadata/pioneer.png"
+logo-small = "dist/metadata/pioneer.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.pioneer.com"
+
+[origins."Vendors-Pitt & Giblin"]
+logo = "dist/metadata/pittgiblin.png"
+logo-small = "dist/metadata/pittgiblin.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.pittandgiblin.com.au/"
+
+[origins."Vendors-Polk Audio"]
+logo = "dist/metadata/polkaudio.png"
+logo-small = "dist/metadata/polkaudio.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.polkaudio.com"
+
+[origins.Vendors-Presonus]
+logo = "dist/metadata/presonus.png"
+logo-small = "dist/metadata/presonus.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.presonus.com"
+
+[origins.Vendors-QSC]
+logo = "dist/metadata/qsc.png"
+logo-small = "dist/metadata/qsc.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.qsc.com"
+
+[origins.Vendors-RCF]
+logo = "dist/metadata/rcf.png"
+logo-small = "dist/metadata/rcf.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.rcf.it"
+
+[origins."Vendors-Reflector Audio"]
+logo = ""
+logo-small = ""
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://http://www.reflector.audio/"
+
+[origins.Vendors-Revel]
+logo = "dist/metadata/revel.png"
+logo-small = "dist/metadata/jbl-small.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.revelspeakers.com"
+
+[origins.Vendors-SONBS]
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.sonbs.net"
+
+[origins.Vendors-Seeburg]
+logo = "dist/metadata/seeburg.png"
+logo-small = "dist/metadata/seeburg.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.seeburg.net"
+
+[origins."Vendors-Sigberg Audio"]
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.sigbergaudio.no"
+
+[origins.Vendors-Sovox]
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.sovox.com"
+
+[origins.Vendors-SunAudio]
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://sunaudio.com/"
+
+[origins."Vendors-Taipuu Speakers"]
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://aaltospeakers.fi"
+
+[origins.Vendors-Tannoy]
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.tannoy.com"
+
+[origins."Vendors-Theory Audio"]
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.theoryprofessional.com"
+
+[origins.Vendors-Topping]
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.topping.com"
+
+[origins.Vendors-Turbosound]
+logo = "dist/metadata/turbosound.png"
+logo-small = "dist/metadata/turbosound.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.turbosound.com"
+
+[origins."Vendors-Vue Audiotechnik"]
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://vue-audiotechnik.com"
+
+[origins."Vendors-Wharfedale Pro"]
+logo = "dist/metadata/.png"
+logo-small = "dist/metadata/.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.wharfedalepro.com/"
+
+[origins.Vendors-Yamaha]
+logo = "dist/metadata/yamaha.png"
+logo-small = "dist/metadata/yamaha-small.png"
+"max dB" = 10
+"max hz" = 20000
+"min dB" = -40
+"min hz" = 20
+url = "https://www.yamaha.com"

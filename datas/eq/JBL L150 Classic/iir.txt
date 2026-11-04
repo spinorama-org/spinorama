@@ -1,0 +1,13 @@
+EQ for JBL L150 Classic computed from Vendors-JBL data
+Preference Score 6.96 with EQ 7.69
+Generated from https://github.com/spinorama-org/spinorama/blob/develop/scripts/generate_peqs.py v0.28
+Dated: 2026-11-01-11:48:05
+
+Preamp: -3.0 dB
+
+Filter  1: ON PK Fc    37 Hz Gain +2.91 dB Q 0.73
+Filter  2: ON PK Fc    44 Hz Gain +2.35 dB Q 0.28
+Filter  3: ON PK Fc    47 Hz Gain -3.74 dB Q 1.40
+Filter  4: ON PK Fc   113 Hz Gain -3.20 dB Q 0.56
+Filter  5: ON PK Fc  1121 Hz Gain -0.76 dB Q 2.99
+Filter  6: ON PK Fc  8397 Hz Gain -1.43 dB Q 1.48

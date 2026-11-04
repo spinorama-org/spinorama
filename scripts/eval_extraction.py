@@ -1,1 +1,0 @@
-../src/graphextract/scripts/eval_extraction.py

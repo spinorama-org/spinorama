@@ -32,6 +32,15 @@ if [ $command -ne 0 ]; then
 else
     echo "OK checking for prod site in dev"
 fi
+# the JS bundle embeds the site URL too (meta-*.js); a prod-flavoured
+# build deployed to dev makes the frontend fetch prod JSON cross-origin
+command=$(grep -l "https://www.spinorama.org" dist/js/meta-*.js dist/js/meta-*.min.js 2>/dev/null | wc -l)
+if [ $command -ne 0 ]; then
+    echo "KO found prod url in dev JS bundle (dist/js/meta-*)"
+    exit 1;
+else
+    echo "OK checking for prod site in dev JS bundle"
+fi
 command=$(grep spinorama.internet-box.ch dist/*.html | wc -l)
 if [ $command -ne 0 ]; then
     echo "KO found old dev url in prod site"

@@ -9,6 +9,8 @@ NPM ?= npm
 WASM_PACK ?= wasm-pack
 
 ANNOTATIONS_MANIFEST := src/spinorama/annotations_rust/Cargo.toml
+GENERATE_MANIFEST := crates/spinorama-generate/Cargo.toml
+WORKSPACE_MANIFEST := Cargo.toml
 ANNOTATIONS_CRATE := src/spinorama/annotations_rust
 WASM_BUILD_DIR := $(CURDIR)/build/website/annotations-rust
 WASM_DIST_DIR := $(CURDIR)/dist/js/annotations-rust
@@ -50,6 +52,51 @@ rust-fmt: ## Check Rust formatting without modifying files.
 
 rust-clippy: ## Lint the Rust annotation solver and deny warnings.
 	$(CARGO) clippy --manifest-path $(ANNOTATIONS_MANIFEST) -- -D warnings
+
+generate-check: ## Type-check the Rust graph generator crate.
+	$(CARGO) check --manifest-path $(GENERATE_MANIFEST)
+
+generate-fmt: ## Check Rust graph generator formatting without modifying files.
+	$(CARGO) fmt --manifest-path $(GENERATE_MANIFEST) -- --check
+
+generate-clippy: ## Lint the Rust graph generator and deny warnings.
+	$(CARGO) clippy --manifest-path $(GENERATE_MANIFEST) --all-targets -- -D warnings
+
+generate-test: ## Run Rust graph generator tests.
+	$(CARGO) test --manifest-path $(GENERATE_MANIFEST)
+
+workspace-check: ## Type-check the whole Rust workspace.
+	$(CARGO) check --manifest-path $(WORKSPACE_MANIFEST) --workspace
+
+workspace-fmt: ## Check formatting of the whole Rust workspace.
+	$(CARGO) fmt --manifest-path $(WORKSPACE_MANIFEST) --all -- --check
+
+workspace-clippy: ## Lint the whole Rust workspace and deny warnings.
+	$(CARGO) clippy --manifest-path $(WORKSPACE_MANIFEST) --workspace --all-targets -- -D warnings
+
+workspace-test: ## Run all Rust workspace tests.
+	$(CARGO) test --manifest-path $(WORKSPACE_MANIFEST) --workspace
+
+workspace-build: ## Build all release binaries of the Rust workspace.
+	$(CARGO) build --release --manifest-path $(WORKSPACE_MANIFEST) --workspace
+
+generate-build: ## Build the release generate-graph, generate-peq and generate-meta binaries.
+	$(CARGO) build --release --manifest-path $(WORKSPACE_MANIFEST) -p spinorama-generate --bin generate-graph --bin generate-peq --bin generate-meta
+
+api-check: ## Type-check the Rust API server crate.
+	$(CARGO) check --manifest-path crates/spinorama-api/Cargo.toml
+
+api-fmt: ## Check Rust API server formatting without modifying files.
+	$(CARGO) fmt --manifest-path crates/spinorama-api/Cargo.toml -- --check
+
+api-clippy: ## Lint the Rust API server and deny warnings.
+	$(CARGO) clippy --manifest-path crates/spinorama-api/Cargo.toml --all-targets -- -D warnings
+
+api-test: ## Run Rust API server tests.
+	$(CARGO) test --manifest-path crates/spinorama-api/Cargo.toml
+
+api-build: ## Build the release spinorama-api binary.
+	$(CARGO) build --release --manifest-path $(WORKSPACE_MANIFEST) -p spinorama-api
 
 wasm: ## Force a release WASM rebuild and copy browser assets into dist.
 	$(WASM_PACK) build $(ANNOTATIONS_CRATE) --target web --release --out-dir $(WASM_BUILD_DIR)

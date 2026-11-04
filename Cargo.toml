@@ -1,0 +1,47 @@
+# Spinorama Rust workspace (monorepo).
+#
+# All Rust crates for spinorama.org live under crates/ and share
+# their dependency versions from [workspace.dependencies] below.
+# Downstream manifests inherit with `dep.workspace = true` so a
+# version bump happens in exactly one place.
+#
+# The PyO3 cdylib trees under src/spinorama/*_rust are deliberately
+# NOT members; they keep their own manifests.
+
+[workspace]
+resolver = "3"
+members = ["crates/spinorama-api", "crates/spinorama-generate"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace.dependencies]
+anyhow = "1"
+# Rust AutoEQ: PEQ optimizer, CEA2034 scores, RBJ biquads/APO formatting.
+# Git-only per design; no path dependency on the local all_of_sotf checkout.
+autoeq-workflow = { version = "0.5", git = "https://github.com/pierreaubert/autoeq", default-features = false }
+base64 = "0.22"
+# Headless chart geometry only (scales); never link gpui here. GPU raster
+# goes through the existing spinorama-render-images binary boundary.
+d3rs = { package = "gpui-d3rs", version = "0.10", git = "https://github.com/pierreaubert/gpui-toolkit", default-features = false }
+flate2 = "1"
+fontdue = "0.9"
+hmac = "0.12"
+image = { version = "0.25", default-features = false, features = ["png", "webp"] }
+mimalloc = "0.1"
+ndarray = "0.17"
+num-complex = "0.4"
+rusqlite = { version = "0.37", features = ["bundled"] }
+rustfft = "6"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tar = "0.4"
+toml = "0.9"
+webp = { version = "0.3", default-features = false }
+zip = { version = "8", default-features = false, features = ["deflate-flate2", "bzip2"] }
+
+[profile.release]
+debug = 1

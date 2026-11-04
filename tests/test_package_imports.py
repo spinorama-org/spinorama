@@ -11,11 +11,6 @@ CANONICAL_MODULES = (
     "spinorama.compute.estimates",
     "spinorama.compute.misc",
     "spinorama.compute.scores",
-    "spinorama.extract.axis_calibrate",
-    "spinorama.extract.color_segment",
-    "spinorama.extract.curve_trace",
-    "spinorama.extract.distortion",
-    "spinorama.extract.plot_detect",
     "spinorama.filters.iir",
     "spinorama.filters.peq",
     "spinorama.filters.scores",
@@ -54,7 +49,6 @@ LEGACY_MODULES = (
 
 REPRESENTATIVE_EXPORTS = (
     ("spinorama.compute.cea2034", "compute_cea2034"),
-    ("spinorama.extract.distortion", "extract_curves"),
     ("spinorama.filters.iir", "Biquad"),
     ("spinorama.loaders.klippel", "parse_graphs_speaker_klippel"),
 )

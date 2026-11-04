@@ -1,1 +1,0 @@
-../src/graphextract/scripts/jina_ocr_run.py

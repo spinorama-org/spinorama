@@ -53,8 +53,8 @@ cache.*.h5
 .vscode
 .cache
 .sass-cache
-build
-bin
+/build
+/bin
 coverage
 coverage.xml
 recompute_eqs.sh
