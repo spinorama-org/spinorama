@@ -25,7 +25,7 @@
 set -eu
 
 TARGET=${1:-dev}
-DEV_HOST=pierre@192.168.1.18
+DEV_HOST=web01.spin
 PROD_HOST=ovhspin
 REMOTE_BIN=spinorama-bin
 REMOTE_BUILD=spinorama-workspace-build

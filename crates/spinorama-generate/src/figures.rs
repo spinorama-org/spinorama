@@ -1056,10 +1056,10 @@ fn directivity_figure(name: &str, title: String, contour: &Figure) -> Option<Fig
         title,
         contour.freq.clone(),
         vec![
-            Trace::with_x("+", pos_x, pos_y, Axis::Primary)
+            Trace::with_x("+6dB", pos_x, pos_y, Axis::Primary)
                 .color("#4758a9")
                 .no_legend(),
-            Trace::with_x("-", neg_x, neg_y, Axis::Primary)
+            Trace::with_x("-6dB", neg_x, neg_y, Axis::Primary)
                 .color("#745470")
                 .dash("dot")
                 .no_legend(),
