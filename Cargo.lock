@@ -123,7 +123,7 @@ checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 [[package]]
 name = "autoeq-core"
 version = "0.5.12"
-source = "git+https://github.com/pierreaubert/autoeq#d1e07cdb385b249b5ed6f1006330b430476c06f5"
+source = "git+https://github.com/pierreaubert/autoeq#9ba5d22bdf2c6f2e09fc3f861e4667ddbb5c9a6c"
 dependencies = [
  "libm",
  "log",
@@ -141,7 +141,7 @@ dependencies = [
 [[package]]
 name = "autoeq-measurements"
 version = "0.5.4"
-source = "git+https://github.com/pierreaubert/autoeq#d1e07cdb385b249b5ed6f1006330b430476c06f5"
+source = "git+https://github.com/pierreaubert/autoeq#9ba5d22bdf2c6f2e09fc3f861e4667ddbb5c9a6c"
 dependencies = [
  "async-trait",
  "autoeq-core",
@@ -163,7 +163,7 @@ dependencies = [
 [[package]]
 name = "autoeq-objective"
 version = "0.5.0"
-source = "git+https://github.com/pierreaubert/autoeq#d1e07cdb385b249b5ed6f1006330b430476c06f5"
+source = "git+https://github.com/pierreaubert/autoeq#9ba5d22bdf2c6f2e09fc3f861e4667ddbb5c9a6c"
 dependencies = [
  "autoeq-core",
  "autoeq-measurements",
@@ -182,7 +182,7 @@ dependencies = [
 [[package]]
 name = "autoeq-optim"
 version = "0.5.64"
-source = "git+https://github.com/pierreaubert/autoeq#d1e07cdb385b249b5ed6f1006330b430476c06f5"
+source = "git+https://github.com/pierreaubert/autoeq#9ba5d22bdf2c6f2e09fc3f861e4667ddbb5c9a6c"
 dependencies = [
  "autoeq-core",
  "autoeq-measurements",
@@ -207,7 +207,7 @@ dependencies = [
 [[package]]
 name = "autoeq-optim-types"
 version = "0.5.0"
-source = "git+https://github.com/pierreaubert/autoeq#d1e07cdb385b249b5ed6f1006330b430476c06f5"
+source = "git+https://github.com/pierreaubert/autoeq#9ba5d22bdf2c6f2e09fc3f861e4667ddbb5c9a6c"
 dependencies = [
  "autoeq-core",
  "schemars",
@@ -217,7 +217,7 @@ dependencies = [
 [[package]]
 name = "autoeq-workflow"
 version = "0.5.6"
-source = "git+https://github.com/pierreaubert/autoeq#d1e07cdb385b249b5ed6f1006330b430476c06f5"
+source = "git+https://github.com/pierreaubert/autoeq#9ba5d22bdf2c6f2e09fc3f861e4667ddbb5c9a6c"
 dependencies = [
  "autoeq-core",
  "autoeq-measurements",
@@ -871,8 +871,8 @@ checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
 
 [[package]]
 name = "gpui-d3rs"
-version = "0.10.45"
-source = "git+https://github.com/pierreaubert/gpui-toolkit#39221e3c4ac6d5c6fe42a7309866f7f3accb619e"
+version = "0.10.46"
+source = "git+https://github.com/pierreaubert/gpui-toolkit#ce46b8e6801160cda55c31699381b8092fddca64"
 dependencies = [
  "delaunator",
  "gpui-profiler",
@@ -889,7 +889,7 @@ dependencies = [
 [[package]]
 name = "gpui-profiler"
 version = "0.10.44"
-source = "git+https://github.com/pierreaubert/gpui-toolkit#39221e3c4ac6d5c6fe42a7309866f7f3accb619e"
+source = "git+https://github.com/pierreaubert/gpui-toolkit#ce46b8e6801160cda55c31699381b8092fddca64"
 
 [[package]]
 name = "h2"
@@ -1508,9 +1508,9 @@ dependencies = [
 
 [[package]]
 name = "mime"
-version = "0.3.17"
+version = "0.3.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6877bb514081ee2a7ff5ef9de3281f14a4dd4bceac4c09388074a6b5df8a139a"
+checksum = "d5848f5a9e8117cf94f2f90faac24a87ff81600ff8628c1e3deaab572e76bfa1"
 
 [[package]]
 name = "miniz_oxide"
@@ -2530,6 +2530,7 @@ dependencies = [
  "mimalloc",
  "ndarray",
  "num-complex",
+ "rayon",
  "rustfft",
  "serde",
  "serde_json",
@@ -2767,7 +2768,7 @@ version = "1.1.5+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baa693a8032d7e1cada7d0041e96126df243179ff061456783ac7f12bda4744c"
 dependencies = [
- "winnow 1.0.4",
+ "winnow 1.0.5",
 ]
 
 [[package]]
@@ -3237,9 +3238,9 @@ checksum = "df79d97927682d2fd8adb29682d1140b343be4ac0f08fd68b7765d9c059d3945"
 
 [[package]]
 name = "winnow"
-version = "1.0.4"
+version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "23b97319f7b8343df12cc98938e5c3eb436064524c8d2b4e30a1d3a36eecdf81"
+checksum = "8c3b93199df0ab874cdf0c6a94f0a0dc3423fe41f1cafb62b8bd7b1deb277aef"
 
 [[package]]
 name = "writeable"

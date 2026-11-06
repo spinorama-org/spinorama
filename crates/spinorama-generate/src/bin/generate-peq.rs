@@ -21,6 +21,7 @@ use anyhow::{Context, Result, bail};
 use autoeq_workflow::LossType;
 use autoeq_workflow::iir::Peq;
 use mimalloc::MiMalloc;
+use rayon::prelude::*;
 use spinorama_generate::compute::cea2034::{Cea2034, compute_cea2034, estimated_inroom_from};
 use spinorama_generate::compute::scores::{preference_score, preference_score_with_peq};
 use spinorama_generate::figures::{
@@ -59,6 +60,7 @@ struct Args {
     metadata_dir: Option<PathBuf>,
     measurements_root: PathBuf,
     limit: Option<usize>,
+    jobs: usize,
     symmetry: Option<String>,
     format: String,
     cea2034_json: Option<PathBuf>,
@@ -88,6 +90,7 @@ fn parse_args() -> Result<Args> {
         metadata_dir: None,
         measurements_root: PathBuf::from("datas/measurements"),
         limit: None,
+        jobs: 0,
         symmetry: None,
         format: "klippel".to_owned(),
         cea2034_json: None,
@@ -128,6 +131,9 @@ fn parse_args() -> Result<Args> {
             }
             "--limit" => {
                 args.limit = Some(value(&mut it)?.parse().context("--limit needs a count")?);
+            }
+            "--jobs" => {
+                args.jobs = value(&mut it)?.parse().context("--jobs needs a count")?;
             }
             "--symmetry" => args.symmetry = Some(value(&mut it)?),
             "--format" => args.format = value(&mut it)?,
@@ -190,7 +196,7 @@ fn parse_args() -> Result<Args> {
                      or:    generate-peq <input> --speaker NAME --output-dir DIR \
                      --generate-images-only --data-dir DIR --origin ORIGIN --mversion VER\n\
                      or:    generate-peq --metadata-json FILE --output-dir EQROOT \
-                     --fitness Flat --optimisation global [--speaker NAME] [--limit N] [--data-dir DIR]\n\
+                     --fitness Flat --optimisation global [--speaker NAME] [--limit N] [--jobs N] [--data-dir DIR]\n\
                      or:    generate-peq --graphic-eq-list"
                 );
                 std::process::exit(0);
@@ -618,6 +624,8 @@ fn histogram_figure(
         traces: Vec::new(),
         x_tickvals: None,
         y_tickvals: None,
+        y_range: None,
+        y_title: None,
         kind: FigureKind::Bar(vec![
             BarTrace {
                 name: "noEQ".to_owned(),
@@ -1018,13 +1026,57 @@ fn run_one(args: &Args) -> Result<()> {
     }
 }
 
+/// Runs per-speaker PEQ jobs, in parallel unless `--limit` is set.
+///
+/// Each job writes only its own speaker output directory. `--limit`
+/// counts completed/failed speakers in order, so that path stays
+/// serial to preserve the exact stopping point. `jobs = 0` lets rayon
+/// pick one worker per CPU core.
+fn run_batch_work(work: &[Args], limit: Option<usize>, jobs: usize) -> Result<()> {
+    let (mut done, mut failed) = (0usize, 0usize);
+    if let Some(limit) = limit {
+        for one in work {
+            if done + failed >= limit {
+                break;
+            }
+            match run_one(one) {
+                Ok(()) => done += 1,
+                Err(error) => {
+                    failed += 1;
+                    eprintln!("batch: FAILED {} {}: {error:#}", one.speaker, one.version);
+                }
+            }
+        }
+    } else {
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(jobs)
+            .build()
+            .map_err(|error| anyhow::anyhow!("building thread pool: {error}"))?;
+        let outcomes: Vec<bool> = pool.install(|| {
+            work.par_iter()
+                .map(|one| match run_one(one) {
+                    Ok(()) => true,
+                    Err(error) => {
+                        eprintln!("batch: FAILED {} {}: {error:#}", one.speaker, one.version);
+                        false
+                    }
+                })
+                .collect()
+        });
+        done = outcomes.iter().filter(|ok| **ok).count();
+        failed = outcomes.len() - done;
+    }
+    println!("batch: {done} generated, {failed} failed");
+    if failed > 0 {
+        bail!("{failed} speaker(s) failed");
+    }
+    Ok(())
+}
+
 fn run_batch_toml(args: &Args, dir: &std::path::Path) -> Result<()> {
     let entries = spinorama_generate::metadata::catalogue_from_dir(dir)?;
-    let (mut done, mut failed) = (0usize, 0usize);
+    let mut work: Vec<Args> = Vec::new();
     for entry in entries.iter().filter(|e| e.is_default) {
-        if args.limit.is_some_and(|limit| done + failed >= limit) {
-            break;
-        }
         if !args.speaker.is_empty() && args.speaker != entry.speaker {
             continue;
         }
@@ -1040,22 +1092,9 @@ fn run_batch_toml(args: &Args, dir: &std::path::Path) -> Result<()> {
         one.format.clone_from(&entry.format);
         one.symmetry.clone_from(&entry.symmetry);
         one.output_dir = args.output_dir.join(sanitize_filename(&entry.speaker));
-        match run_one(&one) {
-            Ok(()) => done += 1,
-            Err(error) => {
-                failed += 1;
-                eprintln!(
-                    "batch: FAILED {} {}: {error:#}",
-                    entry.speaker, entry.version
-                );
-            }
-        }
+        work.push(one);
     }
-    println!("batch: {done} generated, {failed} failed");
-    if failed > 0 {
-        bail!("{failed} speaker(s) failed");
-    }
-    Ok(())
+    run_batch_work(&work, args.limit, args.jobs)
 }
 
 fn run_batch(args: &Args) -> Result<()> {
@@ -1076,11 +1115,8 @@ fn run_batch(args: &Args) -> Result<()> {
     let mut speaker_names: Vec<&String> = speakers.keys().collect();
     speaker_names.sort();
 
-    let (mut done, mut failed) = (0usize, 0usize);
+    let mut work: Vec<Args> = Vec::new();
     for speaker_name in speaker_names {
-        if args.limit.is_some_and(|limit| done + failed >= limit) {
-            break;
-        }
         if !args.speaker.is_empty() && &args.speaker != speaker_name {
             continue;
         }
@@ -1109,19 +1145,9 @@ fn run_batch(args: &Args) -> Result<()> {
             .to_owned();
         one.symmetry = measurement["symmetry"].as_str().map(str::to_owned);
         one.output_dir = args.output_dir.join(sanitize_filename(speaker_name));
-        match run_one(&one) {
-            Ok(()) => done += 1,
-            Err(error) => {
-                failed += 1;
-                eprintln!("batch: FAILED {speaker_name} {version}: {error:#}");
-            }
-        }
+        work.push(one);
     }
-    println!("batch: {done} generated, {failed} failed");
-    if failed > 0 {
-        bail!("{failed} speaker(s) failed");
-    }
-    Ok(())
+    run_batch_work(&work, args.limit, args.jobs)
 }
 
 fn run(args: &Args) -> Result<()> {

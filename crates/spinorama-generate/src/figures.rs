@@ -244,6 +244,11 @@ pub struct Figure {
     pub x_tickvals: Option<Vec<f64>>,
     /// Explicit y grid/tick values (dB) for dense-grid rendering.
     pub y_tickvals: Option<Vec<f64>>,
+    /// Explicit Y axis range, when the figure is not an SPL plot
+    /// (directivity angles span -180..180 degrees, not -45..5 dB).
+    pub y_range: Option<[f64; 2]>,
+    /// Y axis title, when it is not "SPL (dB)".
+    pub y_title: Option<String>,
 }
 
 impl Figure {
@@ -263,6 +268,8 @@ impl Figure {
             kind: FigureKind::Scatter,
             x_tickvals: None,
             y_tickvals: None,
+            y_range: None,
+            y_title: None,
         }
     }
 }
@@ -915,6 +922,8 @@ fn contour_figure(name: &str, title: String, plane: &SplPlane, surface: bool) ->
         traces: Vec::new(),
         x_tickvals: None,
         y_tickvals: None,
+        y_range: None,
+        y_title: None,
         kind: FigureKind::Contour(ContourData {
             angles,
             z,
@@ -989,6 +998,8 @@ fn radar_figure(name: &str, title: String, plane: &SplPlane) -> Figure {
         traces: Vec::new(),
         x_tickvals: None,
         y_tickvals: None,
+        y_range: None,
+        y_title: None,
         kind: FigureKind::Radar(traces),
     }
 }
@@ -1051,7 +1062,7 @@ fn directivity_figure(name: &str, title: String, contour: &Figure) -> Option<Fig
     if pos_x.is_empty() && neg_x.is_empty() {
         return None;
     }
-    Some(Figure::scatter(
+    let mut figure = Figure::scatter(
         name,
         title,
         contour.freq.clone(),
@@ -1064,7 +1075,15 @@ fn directivity_figure(name: &str, title: String, contour: &Figure) -> Option<Fig
                 .dash("dot")
                 .no_legend(),
         ],
-    ))
+    );
+    // The traces are -6 dB crossing angles in degrees (Python
+    // `_minus6_directivity_figure`: yaxis range -180..180, dtick 90),
+    // not SPL: without this the scatter layout clips them to the
+    // -45..5 dB SPL range and the plot comes out empty.
+    figure.y_range = Some([-180.0, 180.0]);
+    figure.y_title = Some("deg".to_owned());
+    figure.y_tickvals = Some(vec![-180.0, -90.0, 0.0, 90.0, 180.0]);
+    Some(figure)
 }
 
 fn group_delay_figure(name: &str, title: String, plane: &SplPlane) -> Option<Figure> {
@@ -1421,6 +1440,8 @@ pub fn eq_filter_figures(
                     ]),
                     x_tickvals: None,
                     y_tickvals: None,
+                    y_range: None,
+                    y_title: None,
                 }
             };
         let hist_full = bar_fig(
@@ -1481,6 +1502,8 @@ pub fn eq_filter_figures(
         kind: FigureKind::Subplot(cells),
         x_tickvals: None,
         y_tickvals: None,
+        y_range: None,
+        y_title: None,
     });
     figures
 }

@@ -16,6 +16,7 @@ use std::time::Instant;
 
 use anyhow::{Context, Result, bail};
 use mimalloc::MiMalloc;
+use rayon::prelude::*;
 use serde_json::{Map, Value};
 use spinorama_generate::compute::cea2034::{Cea2034, compute_spin_data};
 use spinorama_generate::compute::estimates::{estimates, estimates_cea};
@@ -44,6 +45,7 @@ struct Args {
     output_dir: PathBuf,
     speaker: Option<String>,
     parse_max: Option<usize>,
+    jobs: usize,
     skip_eq: bool,
     skip_near: bool,
 }
@@ -56,6 +58,7 @@ fn parse_args() -> Result<Args> {
         output_dir: PathBuf::from("dist/json"),
         speaker: None,
         parse_max: None,
+        jobs: 0,
         skip_eq: false,
         skip_near: false,
     };
@@ -77,13 +80,16 @@ fn parse_args() -> Result<Args> {
                         .context("--parse-max needs a count")?,
                 );
             }
+            "--jobs" => {
+                args.jobs = value(&mut it)?.parse().context("--jobs needs a count")?;
+            }
             "--skip-eq" => args.skip_eq = true,
             "--skip-near" => args.skip_near = true,
             "--help" | "-h" => {
                 println!(
                     "usage: generate-meta [--metadata-dir DIR] [--measurements-root DIR] \
                      [--datas-dir DIR] [--output-dir DIR] [--speaker NAME] \
-                     [--parse-max N] [--skip-eq] [--skip-near]"
+                     [--parse-max N] [--jobs N] [--skip-eq] [--skip-near]"
                 );
                 std::process::exit(0);
             }
@@ -495,36 +501,17 @@ fn run(args: &Args) -> Result<()> {
     }
     println!("generate-meta: {} speakers", work.len());
 
-    let threads = std::thread::available_parallelism()
-        .map_or(1, std::num::NonZero::get)
-        .min(8);
-    let chunk = work.len().div_ceil(threads.max(1));
-    let mut results: Vec<SpeakerResult> = Vec::new();
-    if chunk == 0 {
-        // No speakers selected.
-    } else if threads <= 1 || work.len() < 4 {
-        for speaker in &work {
-            results.push(process_speaker(args, speaker));
-        }
-    } else {
-        let chunks: Vec<&[&SpeakerMeta]> = work.chunks(chunk).collect();
-        std::thread::scope(|scope| {
-            let mut handles = Vec::new();
-            for part in chunks {
-                handles.push(scope.spawn(move || {
-                    part.iter()
-                        .map(|speaker| process_speaker(args, speaker))
-                        .collect::<Vec<_>>()
-                }));
-            }
-            for handle in handles {
-                match handle.join() {
-                    Ok(mut part) => results.append(&mut part),
-                    Err(_) => eprintln!("generate-meta: worker thread failed"),
-                }
-            }
-        });
-    }
+    // Speakers are independent; rayon preserves catalogue order.
+    // num_threads(0) lets rayon pick one worker per CPU core.
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(args.jobs)
+        .build()
+        .map_err(|error| anyhow::anyhow!("building thread pool: {error}"))?;
+    let mut results: Vec<SpeakerResult> = pool.install(|| {
+        work.par_iter()
+            .map(|speaker| process_speaker(args, speaker))
+            .collect()
+    });
     results.sort_by(|a, b| a.name.cmp(&b.name));
 
     if !args.skip_near {
@@ -533,26 +520,37 @@ fn run(args: &Args) -> Result<()> {
             .filter_map(|r| r.spin.clone().map(|spin| (r.name.clone(), spin)))
             .collect();
         let names: Vec<String> = spins.keys().cloned().collect();
-        for result in &mut results {
-            let Some(mine) = result.spin.clone() else {
-                continue;
-            };
-            let mut deltas: Vec<(f64, String)> = Vec::new();
-            for other in &names {
-                if *other == result.name {
-                    continue;
-                }
-                deltas.push((compute_near(&mine, &spins[other]), other.clone()));
-            }
-            deltas.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
-            let nearest: Vec<Value> = deltas
-                .into_iter()
-                .take(10)
-                .map(|(dist, other)| {
-                    Value::Array(vec![Value::from(dist), Value::from(other.as_str())])
+        // The all-pairs nearest search is O(n^2); run it on the pool.
+        let nearest: Vec<Option<Vec<Value>>> = pool.install(|| {
+            results
+                .par_iter()
+                .map(|result| {
+                    let mine = result.spin.clone()?;
+                    let mut deltas: Vec<(f64, String)> = Vec::new();
+                    for other in &names {
+                        if *other == result.name {
+                            continue;
+                        }
+                        deltas.push((compute_near(&mine, &spins[other]), other.clone()));
+                    }
+                    deltas
+                        .sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+                    Some(
+                        deltas
+                            .into_iter()
+                            .take(10)
+                            .map(|(dist, other)| {
+                                Value::Array(vec![Value::from(dist), Value::from(other.as_str())])
+                            })
+                            .collect(),
+                    )
                 })
-                .collect();
-            if let Some(obj) = result.json.as_object_mut() {
+                .collect()
+        });
+        for (result, nearest) in results.iter_mut().zip(nearest) {
+            if let Some(nearest) = nearest
+                && let Some(obj) = result.json.as_object_mut()
+            {
                 obj.insert("nearest".to_owned(), Value::Array(nearest));
             }
         }

@@ -13,6 +13,7 @@ pub mod compute;
 pub mod figures;
 pub mod filters;
 pub mod generate_meta;
+pub mod headphone_meta;
 pub mod loaders;
 pub mod measurements;
 pub mod meta;

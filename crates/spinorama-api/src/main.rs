@@ -182,6 +182,116 @@ struct State {
     spin_files: PathBuf,
     headphone_files: PathBuf,
     origins: Vec<String>,
+    /// Public demo set: a fixed sample of ASR speakers (see
+    /// [`select_demo_speakers`]), served without an API key under
+    /// `/demo/v1/...`.
+    demo_speakers: Vec<String>,
+}
+
+/// How many speakers the public demo exposes.
+const DEMO_COUNT: usize = 10;
+/// Seed of the demo selection: the 2024 ASR catalogue. The selection
+/// is a deterministic shuffle of the sorted candidate names, so every
+/// server (and every restart) serves the same 10 speakers.
+const DEMO_SEED: u64 = 2024;
+
+/// SplitMix64: tiny deterministic PRNG for the demo shuffle.
+struct DemoRng(u64);
+
+impl DemoRng {
+    fn next(&mut self) -> u64 {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z >> 31)
+    }
+}
+
+/// Picks the demo speakers out of `candidates` (speaker names whose
+/// ASR measurement was published in 2024): a seeded Fisher–Yates
+/// shuffle of the sorted names, first [`DEMO_COUNT`], sorted again
+/// for stable listings. Always returns the same set for the same
+/// catalogue.
+fn select_demo_speakers(candidates: &[String]) -> Vec<String> {
+    let mut shuffled: Vec<String> = candidates.to_vec();
+    shuffled.sort();
+    let mut rng = DemoRng(DEMO_SEED);
+    for i in (1..shuffled.len()).rev() {
+        let j = usize::try_from(rng.next() % (i as u64 + 1)).unwrap_or(0);
+        shuffled.swap(i, j);
+    }
+    shuffled.truncate(DEMO_COUNT);
+    shuffled.sort();
+    shuffled
+}
+
+/// Names of speakers with an ASR measurement published in 2024.
+fn demo_candidates(speakers: &Store) -> Vec<String> {
+    let mut candidates = Vec::new();
+    for name in &speakers.names {
+        let Some(record) = speakers.parse_record(name) else {
+            continue;
+        };
+        let is_demo = record
+            .get("measurements")
+            .and_then(Value::as_object)
+            .is_some_and(|measurements| {
+                measurements.values().any(|measurement| {
+                    measurement
+                        .get("origin")
+                        .and_then(Value::as_str)
+                        .is_some_and(|origin| vendor_stripped(origin) == "ASR")
+                        && measurement
+                            .get("review_published")
+                            .and_then(Value::as_str)
+                            .is_some_and(|date| date.starts_with("2024"))
+                })
+            });
+        if is_demo {
+            candidates.push(name.clone());
+        }
+    }
+    candidates
+}
+
+/// The speaker record as the demo may see it: only ASR measurements,
+/// and only for speakers in the demo set.
+fn demo_record(state: &State, name: &str) -> Option<Value> {
+    if !state.demo_speakers.iter().any(|demo| demo == name) {
+        return None;
+    }
+    let mut record = state.speakers.parse_record(name)?;
+    let measurements = record.get("measurements").and_then(Value::as_object)?;
+    let kept: Map<String, Value> = measurements
+        .iter()
+        .filter(|(_, measurement)| {
+            measurement
+                .get("origin")
+                .and_then(Value::as_str)
+                .is_some_and(|origin| vendor_stripped(origin) == "ASR")
+        })
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    if kept.is_empty() {
+        return None;
+    }
+    if let Some(obj) = record.as_object_mut() {
+        let default_missing = obj
+            .get("default_measurement")
+            .and_then(Value::as_str)
+            .is_none_or(|default| !kept.contains_key(default));
+        obj.insert("measurements".to_owned(), Value::Object(kept));
+        if default_missing
+            && let Some(first) = obj
+                .get("measurements")
+                .and_then(Value::as_object)
+                .and_then(|m| m.keys().next().cloned())
+        {
+            obj.insert("default_measurement".to_owned(), Value::from(first));
+        }
+    }
+    Some(record)
 }
 
 fn env_path(name: &str, default: impl Fn() -> PathBuf) -> PathBuf {
@@ -231,12 +341,14 @@ fn load_state() -> Result<State> {
             }
         }
     }
+    let demo_speakers = select_demo_speakers(&demo_candidates(&speakers));
     Ok(State {
         speakers,
         headphones,
         spin_files,
         headphone_files: api_files.join("assets/headphones"),
         origins,
+        demo_speakers,
     })
 }
 
@@ -402,11 +514,16 @@ fn query_value<'a>(request: &'a Request, key: &str) -> Option<&'a str> {
     request.query.get(key).map(String::as_str)
 }
 
-fn speaker_measurements_list(state: &State, segments: &[String]) -> Response {
+fn speaker_measurements_list(state: &State, segments: &[String], demo: bool) -> Response {
     let (speaker_name, speaker_version) = (&segments[2], &segments[4]);
     if !safe_segment(speaker_name) || !safe_segment(speaker_version) {
         return Response::error(&format!(
             "Invalid speaker_name {speaker_name} or speaker_version {speaker_version}!"
+        ));
+    }
+    if demo && !state.demo_speakers.iter().any(|name| name == speaker_name) {
+        return Response::error(&format!(
+            "Speaker {speaker_name} is not part of the demo set!"
         ));
     }
     let Some(record) = state.speakers.parse_record(speaker_name) else {
@@ -429,6 +546,9 @@ fn speaker_measurements_list(state: &State, segments: &[String]) -> Response {
     );
     if !safe_segment(origin) {
         return Response::error(&format!("Invalid origin {origin}!"));
+    }
+    if demo && origin != "ASR" {
+        return Response::error("Demo access is limited to ASR measurements!");
     }
     let Some(upper_dir) = safe_path(&state.spin_files, &[speaker_name]) else {
         return Response::error(&format!("Invalid path for speaker {speaker_name}!"));
@@ -472,6 +592,7 @@ fn speaker_measurement_data(
     segments: &[String],
     request: &Request,
     key_id: &str,
+    demo: bool,
 ) -> Response {
     let (speaker_name, speaker_version) = (&segments[2], &segments[4]);
     let mut measurement_name = segments[6].clone();
@@ -485,6 +606,11 @@ fn speaker_measurement_data(
     {
         return Response::error(&format!(
             "Invalid speaker_name {speaker_name}, speaker_version {speaker_version} or measurement_name {measurement_name}!"
+        ));
+    }
+    if demo && !state.demo_speakers.iter().any(|name| name == speaker_name) {
+        return Response::error(&format!(
+            "Speaker {speaker_name} is not part of the demo set!"
         ));
     }
     let Some(record) = state.speakers.parse_record(speaker_name) else {
@@ -507,6 +633,9 @@ fn speaker_measurement_data(
     );
     if !safe_segment(origin) {
         return Response::error(&format!("Invalid origin {origin}!"));
+    }
+    if demo && origin != "ASR" {
+        return Response::error("Demo access is limited to ASR measurements!");
     }
     let Some(upper_dir) = safe_path(&state.spin_files, &[speaker_name]) else {
         return Response::error(&format!("Invalid path for speaker {speaker_name}!"));
@@ -557,7 +686,7 @@ fn speaker_measurement_data(
         return Response::error("fetching measurements failed");
     };
     let secret = fingerprint::secret_from_env();
-    if secret.is_empty() {
+    if secret.is_empty() || demo {
         return Response::json(200, &Value::Array(vec![Value::from(text)]));
     }
     match serde_json::from_str::<Value>(&text) {
@@ -661,7 +790,16 @@ fn route(state: &State, request: &Request) -> Response {
         }
         _ => {}
     }
-    let is_api_route = matches!(
+    // `/demo/v1/...` mirrors the speaker routes without an API key,
+    // restricted to the demo set and its ASR measurements.
+    let demo = segments.first() == Some(&"demo");
+    let effective: Vec<String> = if demo {
+        request.segments.iter().skip(1).cloned().collect()
+    } else {
+        request.segments.clone()
+    };
+    let segments: Vec<&str> = effective.iter().map(String::as_str).collect();
+    let is_speaker_route = matches!(
         segments.as_slice(),
         ["v1", "brands"]
             | ["v1", "speakers"]
@@ -669,53 +807,99 @@ fn route(state: &State, request: &Request) -> Response {
             | ["v1", "speaker", _, "versions"]
             | ["v1", "speaker", _, "version", _, "measurements"]
             | ["v1", "speaker", _, "version", _, "measurements", _]
-            | ["v1", "headphones"]
-            | ["v1", "headphone", "brands"]
-            | ["v1", "headphone", "shapes"]
-            | ["v1", "headphone", _, "metadata"]
-            | ["v1", "headphone", _, "versions"]
-            | ["v1", "headphone", _, "frequency_response"]
-            | ["v1", "validate"]
     );
-    if !is_api_route {
+    let is_api_route = is_speaker_route
+        || matches!(
+            segments.as_slice(),
+            ["v1", "headphones"]
+                | ["v1", "headphone", "brands"]
+                | ["v1", "headphone", "shapes"]
+                | ["v1", "headphone", _, "metadata"]
+                | ["v1", "headphone", _, "versions"]
+                | ["v1", "headphone", _, "frequency_response"]
+                | ["v1", "validate"]
+        );
+    if !is_api_route || (demo && !is_speaker_route) {
         return Response::json(404, &serde_json::json!({ "detail": "Not Found" }));
     }
-    let (key_id, _email) = match authenticate(request) {
-        Ok(account) => account,
-        Err(response) => return response,
+    let (key_id, _email) = if demo {
+        ("demo".to_owned(), String::new())
+    } else {
+        match authenticate(request) {
+            Ok(account) => account,
+            Err(response) => return response,
+        }
     };
 
     match segments.as_slice() {
-        ["v1", "brands"] => Response::json(
-            200,
-            &Value::Array(
-                state
-                    .speakers
-                    .brands
-                    .iter()
-                    .cloned()
-                    .map(Value::from)
-                    .collect(),
-            ),
-        ),
+        ["v1", "brands"] => {
+            if demo {
+                let mut brands: Vec<String> = Vec::new();
+                for name in &state.demo_speakers {
+                    if let Some(brand) = state.speakers.parse_record(name).and_then(|record| {
+                        record
+                            .get("brand")
+                            .and_then(Value::as_str)
+                            .map(ToOwned::to_owned)
+                    }) && !brands.contains(&brand)
+                    {
+                        brands.push(brand);
+                    }
+                }
+                brands.sort();
+                Response::json(
+                    200,
+                    &Value::Array(brands.into_iter().map(Value::from).collect()),
+                )
+            } else {
+                Response::json(
+                    200,
+                    &Value::Array(
+                        state
+                            .speakers
+                            .brands
+                            .iter()
+                            .cloned()
+                            .map(Value::from)
+                            .collect(),
+                    ),
+                )
+            }
+        }
         ["v1", "speakers"] => Response::json(
             200,
             &Value::Array(
-                state
-                    .speakers
-                    .names
-                    .iter()
-                    .cloned()
-                    .map(Value::from)
-                    .collect(),
+                if demo {
+                    &state.demo_speakers
+                } else {
+                    &state.speakers.names
+                }
+                .iter()
+                .cloned()
+                .map(Value::from)
+                .collect(),
             ),
         ),
-        ["v1", "speaker", name, "metadata"] => match state.speakers.records.get(*name) {
-            Some(raw) => Response::json_text(200, raw.clone()),
-            None => Response::error("Speaker not found"),
-        },
+        ["v1", "speaker", name, "metadata"] => {
+            if demo {
+                match demo_record(state, name) {
+                    Some(record) => Response::json(200, &record),
+                    None => Response::error("Speaker not found"),
+                }
+            } else {
+                match state.speakers.records.get(*name) {
+                    Some(raw) => Response::json_text(200, raw.clone()),
+                    None => Response::error("Speaker not found"),
+                }
+            }
+        }
         ["v1", "speaker", name, "versions"] => {
-            let Some(record) = state.speakers.parse_record(name) else {
+            let record = if demo {
+                demo_record(state, name)
+            } else {
+                state.speakers.parse_record(name)
+            };
+            let Some(record) = record else {
                 return Response::error(&format!("Speaker {name} is not in our database!"));
             };
             let versions: Vec<Value> = record
@@ -726,10 +910,10 @@ fn route(state: &State, request: &Request) -> Response {
             Response::json(200, &Value::Array(versions))
         }
         ["v1", "speaker", _, "version", _, "measurements"] => {
-            speaker_measurements_list(state, &request.segments)
+            speaker_measurements_list(state, &effective, demo)
         }
         ["v1", "speaker", _, "version", _, "measurements", _] => {
-            speaker_measurement_data(state, &request.segments, request, &key_id)
+            speaker_measurement_data(state, &effective, request, &key_id, demo)
         }
         ["v1", "headphones"] => {
             let brand = query_value(request, "brand").map(str::to_lowercase);
@@ -894,6 +1078,10 @@ fn openapi_spec() -> String {
         - **Why you want access:** what you plan to build or research and how you will use the data.\n\
         - Whether you intend to publish or redistribute data, and whether your use is commercial.\n\n\
         Missing, invalid, expired or revoked keys return **401 Unauthorized**.\n\n\
+        ## Demo\n\nThe `/demo/v1/...` prefix mirrors the speaker routes without a key, \
+        for a fixed demo set of 10 speakers measured by ASR (Audio Science Review) \
+        and published in 2024. Only those speakers and their ASR measurements are \
+        available there, with pristine (unfingerprinted) data.\n\n\
         Curve responses carry an imperceptible per-key variation (at most 0.05 dB) \
         used only to identify the source of leaked data. ErinsAudioCorner measurements \
         are not available through this API.\n\n## Measurement data license\n\n\
@@ -903,6 +1091,12 @@ fn openapi_spec() -> String {
         serde_json::json!({
             "summary": summary,
             "security": [{ "APIKey": [] }],
+            "responses": { "200": { "description": "OK" } }
+        })
+    };
+    let demo_operation = |summary: &str| {
+        serde_json::json!({
+            "summary": summary,
             "responses": { "200": { "description": "OK" } }
         })
     };
@@ -944,6 +1138,12 @@ fn openapi_spec() -> String {
             "/v1/headphone/{headphone_name}/metadata": { "get": operation("Headphone metadata") },
             "/v1/headphone/{headphone_name}/versions": { "get": operation("Headphone versions") },
             "/v1/headphone/{headphone_name}/frequency_response": { "get": operation("Headphone frequency response (CSV)") },
+            "/demo/v1/brands": { "get": demo_operation("List brands (demo set, no key required)") },
+            "/demo/v1/speakers": { "get": demo_operation("List the 10 demo speakers (no key required)") },
+            "/demo/v1/speaker/{speaker_name}/metadata": { "get": demo_operation("Demo speaker metadata (ASR measurements only)") },
+            "/demo/v1/speaker/{speaker_name}/versions": { "get": demo_operation("Demo speaker versions (ASR only)") },
+            "/demo/v1/speaker/{speaker_name}/version/{speaker_version}/measurements": { "get": demo_operation("Demo measurement names") },
+            "/demo/v1/speaker/{speaker_name}/version/{speaker_version}/measurements/{measurement_name}": { "get": demo_operation("Demo measurement data (pristine)") },
             "/v1/validate": { "post": operation("Validate speaker metadata") }
         }
     });
@@ -1125,9 +1325,10 @@ fn main() -> std::process::ExitCode {
     let run = || -> Result<()> {
         let state = Arc::new(load_state()?);
         eprintln!(
-            "spinorama-api: {} speakers, {} headphones",
+            "spinorama-api: {} speakers, {} headphones, {} demo speakers",
             state.speakers.names.len(),
-            state.headphones.names.len()
+            state.headphones.names.len(),
+            state.demo_speakers.len()
         );
         serve(state)
     };
@@ -1137,5 +1338,33 @@ fn main() -> std::process::ExitCode {
             eprintln!("spinorama-api: {error:#}");
             std::process::ExitCode::FAILURE
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn demo_selection_is_deterministic_and_fixed_size() {
+        let candidates: Vec<String> = (0..25).map(|i| format!("Speaker {i:02}")).collect();
+        let first = select_demo_speakers(&candidates);
+        let second = select_demo_speakers(&candidates);
+        assert_eq!(first, second, "same catalogue must give the same demo set");
+        assert_eq!(first.len(), DEMO_COUNT);
+        assert!(
+            first.iter().all(|name| candidates.contains(name)),
+            "demo set must be a subset of the candidates"
+        );
+        let mut sorted = first.clone();
+        sorted.sort();
+        assert_eq!(first, sorted, "demo listing is sorted");
+    }
+
+    #[test]
+    fn demo_selection_takes_all_when_fewer_candidates() {
+        let candidates = vec!["A Speaker".to_owned(), "B Speaker".to_owned()];
+        assert_eq!(select_demo_speakers(&candidates), candidates);
+        assert!(select_demo_speakers(&[]).is_empty());
     }
 }

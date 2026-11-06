@@ -21,6 +21,26 @@ path = "src/bin/generate-peq.rs"
 name = "generate-meta"
 path = "src/bin/generate-meta.rs"
 
+[[bin]]
+name = "generate-headphone-meta"
+path = "src/bin/generate-headphone-meta.rs"
+
+[[bin]]
+name = "generate-eq-compare"
+path = "src/bin/generate-eq-compare.rs"
+
+[[bin]]
+name = "generate-radar"
+path = "src/bin/generate-radar.rs"
+
+[[bin]]
+name = "generate-headphone-graph"
+path = "src/bin/generate-headphone-graph.rs"
+
+[[bin]]
+name = "generate-peq-headphone"
+path = "src/bin/generate-peq-headphone.rs"
+
 [dependencies]
 anyhow.workspace = true
 autoeq-workflow.workspace = true
@@ -32,6 +52,7 @@ image.workspace = true
 mimalloc.workspace = true
 ndarray.workspace = true
 num-complex.workspace = true
+rayon.workspace = true
 rustfft.workspace = true
 webp.workspace = true
 serde.workspace = true

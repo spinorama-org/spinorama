@@ -7,7 +7,8 @@
 set -eu
 
 DIR=${SPINORAMA_API_DIR:-/home/spin/run/spin-api}
-BIN=${SPINORAMA_API_BIN:-$HOME/spinorama-bin/spinorama-api}
+# Supervisor does not set $HOME, so default from the service home.
+BIN=${SPINORAMA_API_BIN:-${HOME:-/home/spin}/spinorama-bin/spinorama-api}
 
 export SPINORAMA_API_FILES="${SPINORAMA_API_FILES:-/var/www/html/spinorama-api}"
 export SPINORAMA_SPINFILES="${SPINORAMA_SPINFILES:-$SPINORAMA_API_FILES/speakers}"

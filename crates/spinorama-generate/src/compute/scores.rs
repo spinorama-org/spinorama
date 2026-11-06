@@ -193,14 +193,23 @@ fn pref_rating(nbd_on: f64, nbd_pir: f64, lf_x: f64, sm_pir: f64) -> f64 {
     12.69 - 2.49 * nbd_on - 2.99 * nbd_pir - 4.31 * lf_x + 2.32 * sm_pir
 }
 
-/// Computes the rounded `pref_rating` metadata dictionary exactly as
-/// Python `speaker_pref_rating(..., rounded=True)`.
-///
-/// Returns `None` when the curves cannot be scored (empty PIR, or the
-/// frequency axis starts at or above 40 Hz).
-#[must_use]
-pub fn pref_rating_dict(cea: &Cea2034) -> Option<serde_json::Map<String, serde_json::Value>> {
-    use serde_json::Value;
+/// Raw (unrounded) preference-rating components.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct PrefValues {
+    nbd_on: f64,
+    nbd_lw: f64,
+    nbd_sp: f64,
+    nbd_pir: f64,
+    aad_on: f64,
+    lfx_log: f64,
+    lfq_db: f64,
+    sm_sp: f64,
+    sm_pir: f64,
+    pref_wsub: f64,
+    pref: f64,
+}
+
+fn pref_values(cea: &Cea2034) -> Option<PrefValues> {
     let freq = &cea.freq;
     if freq.is_empty() || cea.estimated_inroom.is_empty() || freq[0] >= 40.0 {
         return None;
@@ -215,25 +224,89 @@ pub fn pref_rating_dict(cea: &Cea2034) -> Option<serde_json::Map<String, serde_j
     let lfq_db = lfq(freq, &cea.listening_window, &cea.sound_power, lfx_log);
     let sm_sp = sm(freq, &cea.sound_power);
     let sm_pir = sm(freq, &cea.estimated_inroom);
-    let pref_wsub = pref_rating(nbd_on, nbd_pir, 14.5f64.log10(), sm_pir);
-    let pref = pref_rating(nbd_on, nbd_pir, lfx_log, sm_pir);
+    Some(PrefValues {
+        nbd_on,
+        nbd_lw,
+        nbd_sp,
+        nbd_pir,
+        aad_on,
+        lfx_log,
+        lfq_db,
+        sm_sp,
+        sm_pir,
+        pref_wsub: pref_rating(nbd_on, nbd_pir, 14.5f64.log10(), sm_pir),
+        pref: pref_rating(nbd_on, nbd_pir, lfx_log, sm_pir),
+    })
+}
+
+/// Computes the rounded `pref_rating` metadata dictionary exactly as
+/// Python `speaker_pref_rating(..., rounded=True)`.
+///
+/// Returns `None` when the curves cannot be scored (empty PIR, or the
+/// frequency axis starts at or above 40 Hz).
+#[must_use]
+pub fn pref_rating_dict(cea: &Cea2034) -> Option<serde_json::Map<String, serde_json::Value>> {
+    use serde_json::Value;
+    let v = pref_values(cea)?;
     let mut out = serde_json::Map::new();
     for (key, value) in [
-        ("nbd_on_axis", round_down(nbd_on, 3)),
-        ("nbd_listening_window", round_down(nbd_lw, 3)),
-        ("nbd_sound_power", round_down(nbd_sp, 3)),
-        ("nbd_pred_in_room", round_down(nbd_pir, 3)),
-        ("sm_pred_in_room", round_down(sm_pir, 3)),
-        ("sm_sound_power", round_down(sm_sp, 3)),
-        ("pref_score_wsub", round_down(pref_wsub, 2)),
+        ("nbd_on_axis", round_down(v.nbd_on, 3)),
+        ("nbd_listening_window", round_down(v.nbd_lw, 3)),
+        ("nbd_sound_power", round_down(v.nbd_sp, 3)),
+        ("nbd_pred_in_room", round_down(v.nbd_pir, 3)),
+        ("sm_pred_in_room", round_down(v.sm_pir, 3)),
+        ("sm_sound_power", round_down(v.sm_sp, 3)),
+        ("pref_score_wsub", round_down(v.pref_wsub, 2)),
     ] {
         out.insert(key.to_owned(), Value::from(value));
     }
-    out.insert("lfx_hz".to_owned(), Value::from(10f64.powf(lfx_log) as i64));
-    out.insert("lfq".to_owned(), Value::from(round_down(lfq_db, 3)));
-    out.insert("pref_score".to_owned(), Value::from(round_down(pref, 2)));
-    if aad_on != 0.0 && aad_on != -1.0 {
-        out.insert("aad_on_axis".to_owned(), Value::from(round_down(aad_on, 3)));
+    out.insert(
+        "lfx_hz".to_owned(),
+        Value::from(10f64.powf(v.lfx_log) as i64),
+    );
+    out.insert("lfq".to_owned(), Value::from(round_down(v.lfq_db, 3)));
+    out.insert("pref_score".to_owned(), Value::from(round_down(v.pref, 2)));
+    if v.aad_on != 0.0 && v.aad_on != -1.0 {
+        out.insert(
+            "aad_on_axis".to_owned(),
+            Value::from(round_down(v.aad_on, 3)),
+        );
+    }
+    Some(out)
+}
+
+/// Computes the unrounded `pref_rating` dictionary exactly as Python
+/// `speaker_pref_rating(..., rounded=False)`, as used by
+/// `scores_apply_filter` for EQ traces in `generate_radar.py`.
+///
+/// Returns `None` under the same conditions as [`pref_rating_dict`].
+#[must_use]
+pub fn pref_rating_dict_unrounded(
+    cea: &Cea2034,
+) -> Option<serde_json::Map<String, serde_json::Value>> {
+    use serde_json::Value;
+    let v = pref_values(cea)?;
+    let mut out = serde_json::Map::new();
+    for (key, value) in [
+        ("nbd_on_axis", v.nbd_on),
+        ("nbd_listening_window", v.nbd_lw),
+        ("nbd_sound_power", v.nbd_sp),
+        ("nbd_pred_in_room", v.nbd_pir),
+        ("sm_pred_in_room", v.sm_pir),
+        ("sm_sound_power", v.sm_sp),
+        ("pref_score_wsub", v.pref_wsub),
+        ("pref_score", v.pref),
+        ("lfx_hz", 10f64.powf(v.lfx_log)),
+        ("lfq", v.lfq_db),
+    ] {
+        out.insert(key.to_owned(), Value::from(value));
+    }
+    // Python rounds `aad_on_axis` even in the unrounded branch.
+    if v.aad_on != 0.0 && v.aad_on != -1.0 {
+        out.insert(
+            "aad_on_axis".to_owned(),
+            Value::from(round_down(v.aad_on, 3)),
+        );
     }
     Some(out)
 }

@@ -63,6 +63,8 @@ struct Args {
     render_images_bin: PathBuf,
     png_dir: Option<PathBuf>,
     force: bool,
+    /// Batch worker threads (0 = one per CPU core).
+    jobs: usize,
 }
 
 fn parse_args() -> Result<Args> {
@@ -97,6 +99,7 @@ fn parse_args() -> Result<Args> {
             .map_or_else(|| PathBuf::from(DEFAULT_RENDER_IMAGES_BIN), PathBuf::from),
         png_dir: None,
         force: false,
+        jobs: 0,
     };
     let mut it = std::env::args().skip(1);
     while let Some(flag) = it.next() {
@@ -153,6 +156,9 @@ fn parse_args() -> Result<Args> {
             "--render-images-bin" => args.render_images_bin = PathBuf::from(value(&mut it)?),
             "--png-dir" => args.png_dir = Some(PathBuf::from(value(&mut it)?)),
             "--force" => args.force = true,
+            "--jobs" => {
+                args.jobs = value(&mut it)?.parse().context("--jobs needs a count")?;
+            }
             "--help" | "-h" => {
                 println!(
                     "usage: generate-graph --speaker-dir DIR --speaker NAME --origin ORIGIN \
@@ -161,7 +167,7 @@ fn parse_args() -> Result<Args> {
                      [--min-valid-freq HZ] [--max-valid-freq HZ] [--data-dir DIR] [--force] \
                      [--render-png [--png-dir DIR] [--render-images-bin BIN]]\n\
                      or:    generate-graph (--metadata-dir DIR | --metadata-json FILE) [--measurements-root DIR] \
-                     [--speaker NAME] [--mversion VER] [--limit N] [--data-dir DIR] [--force] \
+                     [--speaker NAME] [--mversion VER] [--limit N] [--jobs N] [--data-dir DIR] [--force] \
                      [--render-png [--png-dir DIR] [--render-images-bin BIN]]\n\
                      or:    generate-graph --metadata-dir DIR --check-meta"
                 );
@@ -767,23 +773,36 @@ fn catalogue_entries(args: &Args) -> Result<Vec<spinorama_generate::metadata::Ca
 }
 
 fn run_batch(args: &Args) -> Result<()> {
+    use rayon::prelude::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
     let entries = catalogue_entries(args)?;
-    let (mut done, mut failed) = (0usize, 0usize);
-    for entry in &entries {
-        if !args.speaker.is_empty() && args.speaker != entry.speaker {
-            continue;
-        }
-        if args.limit.is_some_and(|limit| done + failed >= limit) {
-            println!("batch: {done} generated, {failed} failed (limit reached)");
-            report_batch_failures(failed, done);
-            return Ok(());
-        }
-        if !args.version.is_empty() && args.version != entry.version {
-            continue;
-        }
-        let speaker_name = &entry.speaker;
-        let version = &entry.version;
-        {
+    // Filter first so --limit caps the work list deterministically
+    // (catalogue order), then run measurements in parallel: each one
+    // loads, computes, and writes only its own speaker/version
+    // directories, so no output is shared between workers.
+    let selected: Vec<_> = entries
+        .iter()
+        .filter(|entry| args.speaker.is_empty() || args.speaker == entry.speaker)
+        .filter(|entry| args.version.is_empty() || args.version == entry.version)
+        .take(args.limit.unwrap_or(usize::MAX))
+        .collect();
+    // num_threads(0) lets rayon pick one worker per CPU core.
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(args.jobs)
+        .build()
+        .map_err(|error| anyhow::anyhow!("building thread pool: {error}"))?;
+    println!(
+        "batch: {} measurement(s), {} worker(s)",
+        selected.len(),
+        pool.current_num_threads()
+    );
+    let done = AtomicUsize::new(0);
+    let failed = AtomicUsize::new(0);
+    pool.install(|| {
+        selected.par_iter().for_each(|entry| {
+            let speaker_name = &entry.speaker;
+            let version = &entry.version;
             let mut one = args.clone();
             one.metadata_json = None;
             one.metadata_dir = None;
@@ -819,15 +838,22 @@ fn run_batch(args: &Args) -> Result<()> {
                 );
             }
             match run_one(&one) {
-                Ok(()) => done += 1,
+                Ok(()) => {
+                    done.fetch_add(1, Ordering::Relaxed);
+                }
                 Err(error) => {
-                    failed += 1;
+                    failed.fetch_add(1, Ordering::Relaxed);
                     eprintln!("batch: FAILED {speaker_name} {version}: {error:#}");
                 }
             }
-        }
+        });
+    });
+    let (done, failed) = (done.load(Ordering::Relaxed), failed.load(Ordering::Relaxed));
+    if args.limit.is_some() {
+        println!("batch: {done} generated, {failed} failed (limit reached)");
+    } else {
+        println!("batch: {done} generated, {failed} failed");
     }
-    println!("batch: {done} generated, {failed} failed");
     report_batch_failures(failed, done);
     Ok(())
 }

@@ -10,7 +10,10 @@ use crate::figures::{Axis, Figure, FigureKind, Visibility};
 /// Primary SPL axis range in dB, matching the Python spin layout.
 const Y_RANGE_DB: [f64; 2] = [-45.0, 5.0];
 /// Secondary directivity-index axis range in dB.
-const Y2_RANGE_DB: [f64; 2] = [-10.0, 40.0];
+// DI axis aligned with the SPL axis (Python generate_yaxis_di default
+// -5..45 for a -45..5 SPL range, so DI 0 sits on the SPL -40 line and
+// the axis goes down to -5 dB).
+const Y2_RANGE_DB: [f64; 2] = [-5.0, 45.0];
 
 /// Encodes a figure as the `{data, layout}` Plotly JSON object.
 ///
@@ -220,8 +223,8 @@ fn scatter_json_string(figure: &Figure) -> Result<String> {
             "autorange": false,
         },
         "yaxis": {
-            "title": {"text": "SPL (dB)"},
-            "range": Y_RANGE_DB,
+            "title": {"text": figure.y_title.as_deref().unwrap_or("SPL (dB)")},
+            "range": figure.y_range.unwrap_or(Y_RANGE_DB),
             "autorange": false,
         },
     });

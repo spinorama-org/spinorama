@@ -80,8 +80,8 @@ workspace-test: ## Run all Rust workspace tests.
 workspace-build: ## Build all release binaries of the Rust workspace.
 	$(CARGO) build --release --manifest-path $(WORKSPACE_MANIFEST) --workspace
 
-generate-build: ## Build the release generate-graph, generate-peq and generate-meta binaries.
-	$(CARGO) build --release --manifest-path $(WORKSPACE_MANIFEST) -p spinorama-generate --bin generate-graph --bin generate-peq --bin generate-meta
+generate-build: ## Build the release generate-graph, generate-peq, generate-meta, generate-radar, generate-eq-compare, generate-headphone-meta, generate-headphone-graph and generate-peq-headphone binaries.
+	$(CARGO) build --release --manifest-path $(WORKSPACE_MANIFEST) -p spinorama-generate --bin generate-graph --bin generate-peq --bin generate-meta --bin generate-radar --bin generate-eq-compare --bin generate-headphone-meta --bin generate-headphone-graph --bin generate-peq-headphone
 
 api-check: ## Type-check the Rust API server crate.
 	$(CARGO) check --manifest-path crates/spinorama-api/Cargo.toml

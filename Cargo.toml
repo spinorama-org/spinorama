@@ -33,6 +33,7 @@ image = { version = "0.25", default-features = false, features = ["png", "webp"]
 mimalloc = "0.1"
 ndarray = "0.17"
 num-complex = "0.4"
+rayon = "1"
 rusqlite = { version = "0.37", features = ["bundled"] }
 rustfft = "6"
 serde = { version = "1", features = ["derive"] }

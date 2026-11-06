@@ -1,6 +1,8 @@
 #!/bin/sh
 # Deploy the Rust binaries (generate-graph, generate-peq, generate-meta,
-# spinorama-api) to a server.
+# generate-radar, generate-eq-compare, generate-headphone-meta,
+# generate-headphone-graph, generate-peq-headphone, spinorama-api)
+# to a server.
 #
 # Usage: scripts/deploy_binaries.sh [dev|prod|all]
 #
@@ -31,7 +33,7 @@ REMOTE_BIN=spinorama-bin
 REMOTE_BUILD=spinorama-workspace-build
 # shellcheck disable=SC1007
 REPO_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-BINARIES="generate-graph generate-peq generate-meta spinorama-api"
+BINARIES="generate-graph generate-peq generate-meta generate-radar generate-eq-compare generate-headphone-meta generate-headphone-graph generate-peq-headphone spinorama-api"
 
 case "$TARGET" in
     dev|prod|all) ;;
@@ -54,19 +56,34 @@ install_and_smoke() {
     ssh "$host" "mkdir -p \$HOME/$REMOTE_BIN"
     if [ "$host" = "$DEV_HOST" ]; then
         for bin in $BINARIES; do
+            # Move the installed binary aside first: overwriting a
+            # running executable in place fails with ETXTBSY
+            # (spinorama-api is served by supervisor), while renaming
+            # it keeps the live process on its old inode.
+            ssh "$host" "mv -f ~/$REMOTE_BIN/$bin ~/$REMOTE_BIN/$bin.old 2>/dev/null || true"
             ssh "$host" "cp ~/$REMOTE_BUILD/target/release/$bin ~/$REMOTE_BIN/"
         done
     else
         tmp=$(mktemp -d)
         for bin in $BINARIES; do
             rsync -az "$DEV_HOST:$REMOTE_BUILD/target/release/$bin" "$tmp/"
+            # Same ETXTBSY guard as above before rsync overwrites.
+            ssh "$host" "mv -f ~/$REMOTE_BIN/$bin ~/$REMOTE_BIN/$bin.old 2>/dev/null || true"
             rsync -az "$tmp/$bin" "$host:$REMOTE_BIN/"
         done
         rm -rf "$tmp"
     fi
-    ssh "$host" "chmod +x \$HOME/$REMOTE_BIN/generate-graph \$HOME/$REMOTE_BIN/generate-peq \$HOME/$REMOTE_BIN/generate-meta \$HOME/$REMOTE_BIN/spinorama-api"
+    ssh "$host" "chmod +x \$HOME/$REMOTE_BIN/generate-graph \$HOME/$REMOTE_BIN/generate-peq \$HOME/$REMOTE_BIN/generate-meta \$HOME/$REMOTE_BIN/generate-radar \$HOME/$REMOTE_BIN/generate-eq-compare \$HOME/$REMOTE_BIN/generate-headphone-meta \$HOME/$REMOTE_BIN/generate-headphone-graph \$HOME/$REMOTE_BIN/generate-peq-headphone \$HOME/$REMOTE_BIN/spinorama-api"
     echo "==> Smoke test on $host"
     ssh "$host" "\$HOME/$REMOTE_BIN/generate-peq --graphic-eq-list | head -3"
+    # --version exits 0 without touching data, proving the ELF runs.
+    ssh "$host" "\$HOME/$REMOTE_BIN/generate-radar --version"
+    ssh "$host" "\$HOME/$REMOTE_BIN/generate-eq-compare --version"
+    # The headphone bins have no --version flag; --help exits 0 without
+    # touching data, proving the ELF runs.
+    ssh "$host" "\$HOME/$REMOTE_BIN/generate-headphone-meta --help >/dev/null"
+    ssh "$host" "\$HOME/$REMOTE_BIN/generate-headphone-graph --help >/dev/null"
+    ssh "$host" "\$HOME/$REMOTE_BIN/generate-peq-headphone --help >/dev/null"
     # generate-graph without arguments must fail with its own message,
     # which proves the ELF runs under the target glibc.
     ssh "$host" "\$HOME/$REMOTE_BIN/generate-graph 2>&1 | head -2 || true"
@@ -80,6 +97,11 @@ fi
 if [ "$TARGET" = "prod" ] || [ "$TARGET" = "all" ]; then
     required=$(ssh "$DEV_HOST" "objdump -T ~/$REMOTE_BUILD/target/release/generate-graph \
         ~/$REMOTE_BUILD/target/release/generate-peq \
+        ~/$REMOTE_BUILD/target/release/generate-radar \
+        ~/$REMOTE_BUILD/target/release/generate-eq-compare \
+        ~/$REMOTE_BUILD/target/release/generate-headphone-meta \
+        ~/$REMOTE_BUILD/target/release/generate-headphone-graph \
+        ~/$REMOTE_BUILD/target/release/generate-peq-headphone \
         ~/$REMOTE_BUILD/target/release/spinorama-api | grep -o 'GLIBC_[0-9.]*' | sort -Vu | tail -1")
     required=${required#GLIBC_}
     prod_glibc=$(ssh "$PROD_HOST" "ldd --version | head -1 | grep -o '[0-9.]*$'")

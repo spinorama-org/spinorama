@@ -18,7 +18,7 @@ fn fixture() -> PathBuf {
     std::fs::create_dir_all(dir.join("speakers/Test Speaker/ASR/asr")).expect("spin");
     std::fs::write(
         dir.join("assets/metadata.json"),
-        r#"{"Test Speaker":{"brand":"Test","model":"Speaker","type":"passive","price":"1","shape":"bookshelves","default_measurement":"asr","measurements":{"asr":{"origin":"ASR","format":"klippel"},"eac":{"origin":"ErinsAudioCorner","format":"klippel"}}}}"#,
+        r#"{"Test Speaker":{"brand":"Test","model":"Speaker","type":"passive","price":"1","shape":"bookshelves","default_measurement":"asr","measurements":{"asr":{"origin":"ASR","format":"klippel","review_published":"20240301"},"eac":{"origin":"ErinsAudioCorner","format":"klippel"}}},"Old Speaker":{"brand":"Old","model":"Speaker","type":"passive","price":"1","shape":"bookshelves","default_measurement":"asr","measurements":{"asr":{"origin":"ASR","format":"klippel","review_published":"20230501"}}}}"#,
     )
     .expect("metadata");
     std::fs::write(
@@ -152,6 +152,51 @@ fn api_smoke() {
         (y - 85.0).abs() > 0.0 && (y - 85.0).abs() <= 0.05,
         "fingerprinted y={y}"
     );
+
+    // Demo prefix: no key, only the fixed ASR/2024 set, pristine data.
+    let (status, body) = request("/demo/v1/speakers", None);
+    assert_eq!(status, 200);
+    assert!(body.contains("Test Speaker"), "demo speakers: {body}");
+    assert!(
+        !body.contains("Old Speaker"),
+        "2023 speaker excluded: {body}"
+    );
+    let (status, body) = request("/demo/v1/brands", None);
+    assert_eq!(status, 200);
+    assert!(body.contains("\"Test\""), "demo brands: {body}");
+    assert!(!body.contains("Old"), "demo brands: {body}");
+    let (status, body) = request("/demo/v1/speaker/Test%20Speaker/metadata", None);
+    assert_eq!(status, 200);
+    assert!(body.contains("\"asr\""), "demo metadata: {body}");
+    assert!(
+        !body.contains("\"eac\""),
+        "demo metadata is ASR-only: {body}"
+    );
+    let (_status, body) = request("/demo/v1/speaker/Old%20Speaker/metadata", None);
+    assert!(body.contains("error"), "non-demo speaker rejected: {body}");
+    let (status, body) = request(
+        "/demo/v1/speaker/Test%20Speaker/version/asr/measurements/CEA2034",
+        None,
+    );
+    assert_eq!(status, 200);
+    let outer: serde_json::Value = serde_json::from_str(&body).expect("demo outer json");
+    let inner: serde_json::Value =
+        serde_json::from_str(outer[0].as_str().expect("demo text payload")).expect("demo figure");
+    assert_eq!(
+        inner["data"][0]["y"][1].as_f64(),
+        Some(85.0),
+        "demo data must be pristine (no fingerprint)"
+    );
+    let (_status, body) = request(
+        "/demo/v1/speaker/Test%20Speaker/version/eac/measurements/CEA2034",
+        None,
+    );
+    assert!(
+        body.contains("error"),
+        "demo rejects non-ASR version: {body}"
+    );
+    assert_eq!(request("/demo/v1/headphones", None).0, 404);
+    assert_eq!(request("/demo/v1/speakers", Some("wrong")).0, 200);
 
     let listed = run_keys(&dir, &["list"]);
     assert!(!listed.contains(&token), "list must not leak the token");
