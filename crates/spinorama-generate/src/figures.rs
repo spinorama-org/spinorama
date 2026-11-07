@@ -249,6 +249,8 @@ pub struct Figure {
     pub y_range: Option<[f64; 2]>,
     /// Y axis title, when it is not "SPL (dB)".
     pub y_title: Option<String>,
+    /// Whether renderers draw the black 0 dB reference line.
+    pub show_zero_line: bool,
 }
 
 impl Figure {
@@ -270,7 +272,15 @@ impl Figure {
             y_tickvals: None,
             y_range: None,
             y_title: None,
+            show_zero_line: true,
         }
+    }
+
+    /// Drops the black 0 dB reference line from this figure.
+    #[must_use]
+    pub fn no_zero_line(mut self) -> Self {
+        self.show_zero_line = false;
+        self
     }
 }
 
@@ -591,7 +601,8 @@ pub fn common_figures(
             title("On Axis"),
             cea.freq.clone(),
             regression_traces(&cea.freq, &cea.on_axis, "On Axis", Some("Midrange ±3dB")),
-        ),
+        )
+        .no_zero_line(),
         Figure::scatter(
             "Estimated In-Room Response",
             title("Estimated In-Room Response"),
@@ -602,7 +613,8 @@ pub fn common_figures(
                 "Estimated In-Room Response",
                 Some("Midrange ±3dB"),
             ),
-        ),
+        )
+        .no_zero_line(),
         Figure::scatter(
             "Estimated In-Room Response Normalized",
             title("Estimated In-Room Response Normalized"),
@@ -647,20 +659,15 @@ fn named_curve_figure(
 }
 
 fn spl_plane_figure(name: &str, title: String, plane: &SplPlane) -> Figure {
+    // No regression overlay here: the yellow ±3 dB bands and the
+    // midrange ±3 dB bars clutter the angle curves, so only the
+    // measured curves are plotted.
     let mut traces = Vec::new();
-    let trend = plane
-        .column("On Axis")
-        .map(|on_axis| regression_traces(&plane.freq, on_axis, "On Axis", Some("Trend line")));
     for (column, values) in &plane.columns {
         let Some(angle) = angle_degrees(column) else {
             continue;
         };
         if column == "On Axis" {
-            if let Some(trend_traces) = &trend
-                && trend_traces.len() > 1
-            {
-                traces.extend(trend_traces[..trend_traces.len() - 1].iter().cloned());
-            }
             traces.push(Trace::new("ON", values.clone(), Axis::Primary));
             continue;
         }
@@ -670,7 +677,14 @@ fn spl_plane_figure(name: &str, title: String, plane: &SplPlane) -> Figure {
         }
         traces.push(trace);
     }
-    Figure::scatter(name, title, plane.freq.clone(), traces)
+    let figure = Figure::scatter(name, title, plane.freq.clone(), traces);
+    // The non-normalized SPL views drop the 0 dB reference line; the
+    // normalized views keep it (their curves are centred on 0 dB).
+    if name.ends_with("Normalized") {
+        figure
+    } else {
+        figure.no_zero_line()
+    }
 }
 
 /// Builds all scatter figures currently ported for HV measurements.
@@ -810,6 +824,33 @@ pub fn spin_figures(
         &data.vertical_normalized,
         true,
     ));
+    // Globe (sphere) views reuse the 2D contour grid; the renderer
+    // wraps it on a sphere. Without these payloads the catalog's Globe
+    // entries had nothing to draw.
+    figures.extend(contour_figure(
+        "SPL Horizontal Globe",
+        title("SPL Horizontal Globe"),
+        &data.horizontal,
+        false,
+    ));
+    figures.extend(contour_figure(
+        "SPL Vertical Globe",
+        title("SPL Vertical Globe"),
+        &data.vertical,
+        false,
+    ));
+    figures.extend(contour_figure(
+        "SPL Horizontal Globe Normalized",
+        title("SPL Horizontal Globe Normalized"),
+        &data.horizontal_normalized,
+        false,
+    ));
+    figures.extend(contour_figure(
+        "SPL Vertical Globe Normalized",
+        title("SPL Vertical Globe Normalized"),
+        &data.vertical_normalized,
+        false,
+    ));
     figures.push(radar_figure(
         "SPL Horizontal Radar",
         title("SPL Horizontal Radar"),
@@ -924,6 +965,7 @@ fn contour_figure(name: &str, title: String, plane: &SplPlane, surface: bool) ->
         y_tickvals: None,
         y_range: None,
         y_title: None,
+        show_zero_line: true,
         kind: FigureKind::Contour(ContourData {
             angles,
             z,
@@ -1000,6 +1042,7 @@ fn radar_figure(name: &str, title: String, plane: &SplPlane) -> Figure {
         y_tickvals: None,
         y_range: None,
         y_title: None,
+        show_zero_line: true,
         kind: FigureKind::Radar(traces),
     }
 }
@@ -1442,6 +1485,7 @@ pub fn eq_filter_figures(
                     y_tickvals: None,
                     y_range: None,
                     y_title: None,
+                    show_zero_line: true,
                 }
             };
         let hist_full = bar_fig(
@@ -1504,6 +1548,7 @@ pub fn eq_filter_figures(
         y_tickvals: None,
         y_range: None,
         y_title: None,
+        show_zero_line: true,
     });
     figures
 }

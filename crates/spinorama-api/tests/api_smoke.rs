@@ -26,7 +26,64 @@ fn fixture() -> PathBuf {
         r#"{"data":[{"name":"On Axis","x":[100.0,1000.0],"y":[80.0,85.0]}]}"#,
     )
     .expect("figure");
+    // Trace bundles for the /compare.webp overlay (one per speaker).
+    for speaker in ["Test Speaker", "Old Speaker"] {
+        let traces = dir.join(format!("speakers/{speaker}/ASR/asr/traces"));
+        std::fs::create_dir_all(&traces).expect("traces");
+        std::fs::write(traces.join("CEA2034.json"), bundle_json()).expect("bundle");
+    }
     dir
+}
+
+/// Minimal bundle JSON: one 4-point trace, int16-encoded (see compare.rs).
+fn bundle_json() -> String {
+    fn b64(bytes: &[u8]) -> String {
+        const TABLE: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        let mut out = String::new();
+        for chunk in bytes.chunks(3) {
+            let n = chunk.iter().fold(0u32, |acc, b| (acc << 8) | u32::from(*b))
+                << (8 * (3 - chunk.len()));
+            for i in 0..4 {
+                if i <= chunk.len() {
+                    out.push(TABLE[((n >> (18 - 6 * i)) & 63) as usize] as char);
+                } else {
+                    out.push('=');
+                }
+            }
+        }
+        out
+    }
+    let values: Vec<u8> = [0i16, -100, -200, -300]
+        .iter()
+        .flat_map(|v| v.to_le_bytes())
+        .collect();
+    format!(
+        r##"{{"freq_min":20.0,"freq_max":20000.0,"points":4,"y_range":[-45,5],"traces":[{{"name":"On Axis","axis":"y","color":"#ff0000","y_int16_b64":"{}"}}]}}"##,
+        b64(&values)
+    )
+}
+
+fn request_raw(path: &str) -> (u16, String, Vec<u8>) {
+    let mut stream = TcpStream::connect(("127.0.0.1", PORT)).expect("connect");
+    stream
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .expect("timeout");
+    stream
+        .write_all(format!("GET {path} HTTP/1.1\r\nHost: localhost\r\n\r\n").as_bytes())
+        .expect("write");
+    let mut raw = Vec::new();
+    stream.read_to_end(&mut raw).expect("read");
+    let split = raw
+        .windows(4)
+        .position(|w| w == b"\r\n\r\n")
+        .expect("header end");
+    let headers = String::from_utf8_lossy(&raw[..split]).into_owned();
+    let status: u16 = headers
+        .split_whitespace()
+        .nth(1)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+    (status, headers, raw[split + 4..].to_vec())
 }
 
 fn run_keys(dir: &std::path::Path, args: &[&str]) -> String {
@@ -109,6 +166,7 @@ fn api_smoke() {
         .env("SPINORAMA_API_KEY_DB", dir.join("keys.sqlite3"))
         .env("SPINORAMA_API_FILES", &dir)
         .env("SPINORAMA_API_BIND", format!("tcp:127.0.0.1:{PORT}"))
+        .env("SPINORAMA_COMPARE_CACHE", dir.join("compare-cache"))
         .env("SPINORAMA_FINGERPRINT_SECRET", "test-secret")
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -197,6 +255,32 @@ fn api_smoke() {
     );
     assert_eq!(request("/demo/v1/headphones", None).0, 404);
     assert_eq!(request("/demo/v1/speakers", Some("wrong")).0, 200);
+
+    // Compare picture: public, rendered once then served from cache.
+    let compare_path = "/compare.webp?measurement=CEA2034&w=900\
+        &a_speaker=Test%20Speaker&a_origin=ASR&a_version=asr\
+        &b_speaker=Old%20Speaker&b_origin=ASR&b_version=asr";
+    let (status, headers, body) = request_raw(compare_path);
+    assert_eq!(status, 200, "compare: {headers}");
+    assert!(
+        headers.contains("X-Compare-Cache: miss"),
+        "headers: {headers}"
+    );
+    assert_eq!(&body[..4], b"RIFF");
+    assert_eq!(&body[8..12], b"WEBP");
+    let (status, headers, again) = request_raw(compare_path);
+    assert_eq!(status, 200);
+    assert!(
+        headers.contains("X-Compare-Cache: hit"),
+        "headers: {headers}"
+    );
+    assert_eq!(body, again, "cached bytes must be identical");
+    let (status, _, _) = request_raw(
+        "/compare.webp?measurement=SPL%20Horizontal%20Globe&w=900\
+         &a_speaker=Test%20Speaker&a_origin=ASR&a_version=asr\
+         &b_speaker=Old%20Speaker&b_origin=ASR&b_version=asr",
+    );
+    assert_eq!(status, 400, "non-whitelisted measurement rejected");
 
     let listed = run_keys(&dir, &["list"]);
     assert!(!listed.contains(&token), "list must not leak the token");

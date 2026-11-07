@@ -228,6 +228,9 @@ fn scatter_json_string(figure: &Figure) -> Result<String> {
             "autorange": false,
         },
     });
+    if !figure.show_zero_line {
+        layout["hide_zero_line"] = json!(true);
+    }
     if let Some(tickvals) = &figure.x_tickvals {
         layout["xaxis"]["tickvals"] = json!(tickvals);
     }

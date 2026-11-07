@@ -626,6 +626,7 @@ fn histogram_figure(
         y_tickvals: None,
         y_range: None,
         y_title: None,
+        show_zero_line: true,
         kind: FigureKind::Bar(vec![
             BarTrace {
                 name: "noEQ".to_owned(),
@@ -816,7 +817,7 @@ fn write_filters_figures(
         base.join(&args.version)
     };
     for figure in &figures {
-        let written = write_figure(&out_dir, figure)?;
+        let (written, _) = write_figure(&out_dir, figure)?;
         println!("wrote {}", written.display());
     }
     Ok(())

@@ -215,6 +215,8 @@ struct PendingImage {
     public_dir: PathBuf,
     seed_prefix: String,
     source: String,
+    /// Whether the figure payload was (re)written this run.
+    changed: bool,
 }
 
 fn write_graph(
@@ -227,12 +229,13 @@ fn write_graph(
 ) -> Result<()> {
     std::fs::create_dir_all(public_dir)
         .with_context(|| format!("creating {}", public_dir.display()))?;
-    write_figure(private_dir, figure)?;
+    let (_, changed) = write_figure(private_dir, figure)?;
     pending.push(PendingImage {
         private_dir: private_dir.to_path_buf(),
         public_dir: public_dir.to_path_buf(),
         seed_prefix: seed_prefix.to_owned(),
         source: source.to_owned(),
+        changed,
     });
     Ok(())
 }
@@ -364,7 +367,40 @@ fn run(args: &Args) -> Result<usize> {
         }
     }
 
+    // Freshness: render when any payload changed, when the renderer
+    // binary changed (colormaps, layout), or when a variant's WebP
+    // outputs are missing. The wait on renderer completion is
+    // idempotent: already-rendered dirs are cheap no-ops.
+    use spinorama_generate::render::{renderer_current, renderer_spec, write_renderer_stamp};
+    let stamp_root = if let Some(root) = &args.png_root {
+        root.clone()
+    } else {
+        pending.first().map_or_else(
+            || private_root.to_path_buf(),
+            |item| {
+                item.public_dir
+                    .ancestors()
+                    .nth(2)
+                    .unwrap_or(&item.public_dir)
+                    .to_path_buf()
+            },
+        )
+    };
+    let spec = renderer_spec(&args.render_images_bin)
+        .unwrap_or_else(|_| format!("bin:{}", args.render_images_bin.display()));
+    let is_default_bin = args.render_images_bin
+        == std::path::Path::new(spinorama_generate::render::DEFAULT_RENDER_IMAGES_BIN);
+    let renderer_changed = is_default_bin && !renderer_current(&stamp_root, &spec);
+    let pending: Vec<PendingImage> = if renderer_changed && !args.force {
+        pending
+    } else {
+        pending
+            .into_iter()
+            .filter(|item| args.force || item.changed)
+            .collect()
+    };
     let images = pool.install(|| emit_public_images(args, &pending));
+    let _ = write_renderer_stamp(&stamp_root, &spec);
     println!(
         "generated headphone graphs for {count} headphones ({images} public images) in {:?}",
         started.elapsed()

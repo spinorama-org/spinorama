@@ -2508,12 +2508,15 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
+ "fontdue",
  "hmac",
+ "image",
  "rusqlite",
  "serde",
  "serde_json",
  "sha2 0.10.9",
  "toml",
+ "webp",
 ]
 
 [[package]]
@@ -2534,6 +2537,7 @@ dependencies = [
  "rustfft",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "tar",
  "toml",
  "webp",

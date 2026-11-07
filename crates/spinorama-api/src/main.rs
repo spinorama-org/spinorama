@@ -18,6 +18,7 @@
 
 // Rust guideline compliant 2026-02-21
 
+mod compare;
 mod fingerprint;
 mod keys;
 mod validate;
@@ -186,6 +187,9 @@ struct State {
     /// [`select_demo_speakers`]), served without an API key under
     /// `/demo/v1/...`.
     demo_speakers: Vec<String>,
+    /// On-the-fly comparison pictures (`/compare.webp`): disk cache,
+    /// render lock, and per-minute render budget.
+    compare: compare::CompareState,
 }
 
 /// How many speakers the public demo exposes.
@@ -349,6 +353,9 @@ fn load_state() -> Result<State> {
         headphone_files: api_files.join("assets/headphones"),
         origins,
         demo_speakers,
+        compare: compare::CompareState::new(env_path("SPINORAMA_COMPARE_CACHE", || {
+            PathBuf::from("dist/compare-cache")
+        })),
     })
 }
 
@@ -790,6 +797,49 @@ fn route(state: &State, request: &Request) -> Response {
         }
         _ => {}
     }
+    // Public comparison picture, rendered from the pristine bundles
+    // and hardened so the underlying data is never exposed. Query:
+    // `measurement`, `a_speaker/a_origin/a_version`,
+    // `b_speaker/b_origin/b_version`, `w` (900 or 1400). The website
+    // requests `/compare-render/compare.webp` (nginx snippet location),
+    // the API's public route is `/compare.webp`; accept both so the
+    // www host can proxy the original URI straight to this socket,
+    // replacing the Python compare service on port 8765.
+    if segments.as_slice() == ["compare.webp"]
+        || segments.as_slice() == ["compare-render", "compare.webp"]
+    {
+        return match compare::serve(&state.spin_files, &state.compare, &request.query) {
+            Ok(picture) => Response {
+                status: 200,
+                content_type: "image/webp".to_owned(),
+                body: picture.body,
+                extra_headers: vec![
+                    (
+                        "Cache-Control".to_owned(),
+                        "public, max-age=31536000, immutable".to_owned(),
+                    ),
+                    (
+                        "X-Compare-Cache".to_owned(),
+                        if picture.cache_hit { "hit" } else { "miss" }.to_owned(),
+                    ),
+                ],
+            },
+            Err(failure) => {
+                let mut response = Response {
+                    status: failure.status,
+                    content_type: "text/plain; charset=utf-8".to_owned(),
+                    body: format!("{}\n", failure.message).into_bytes(),
+                    extra_headers: Vec::new(),
+                };
+                if let Some(retry) = failure.retry_after {
+                    response
+                        .extra_headers
+                        .push(("Retry-After".to_owned(), retry.to_string()));
+                }
+                response
+            }
+        };
+    }
     // `/demo/v1/...` mirrors the speaker routes without an API key,
     // restricted to the demo set and its ASR measurements.
     let demo = segments.first() == Some(&"demo");
@@ -1144,7 +1194,8 @@ fn openapi_spec() -> String {
             "/demo/v1/speaker/{speaker_name}/versions": { "get": demo_operation("Demo speaker versions (ASR only)") },
             "/demo/v1/speaker/{speaker_name}/version/{speaker_version}/measurements": { "get": demo_operation("Demo measurement names") },
             "/demo/v1/speaker/{speaker_name}/version/{speaker_version}/measurements/{measurement_name}": { "get": demo_operation("Demo measurement data (pristine)") },
-            "/v1/validate": { "post": operation("Validate speaker metadata") }
+            "/v1/validate": { "post": operation("Validate speaker metadata") },
+            "/compare.webp": { "get": { "summary": "Two-speaker overlay picture (A solid, B dashed), rendered from private bundles and cached by content hash; query: measurement, a_speaker/a_origin/a_version, b_speaker/b_origin/b_version, w (900|1400). No key required; the hardened WebP never exposes the underlying data.", "responses": { "200": { "description": "image/webp" }, "400": { "description": "Invalid parameters" }, "404": { "description": "Comparison data not available" }, "503": { "description": "Render budget exhausted (Retry-After)" } } } }
         }
     });
     serde_json::to_string(&spec).unwrap_or_default()

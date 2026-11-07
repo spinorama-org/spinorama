@@ -16,6 +16,10 @@ export SPINORAMA_API_KEY_DB="${SPINORAMA_API_KEY_DB:-$DIR/accounts/keys.sqlite3}
 export SPINORAMA_ORIGINS_TOML="${SPINORAMA_ORIGINS_TOML:-$DIR/datas/origins.toml}"
 # Nginx upstream stays on the historical socket path.
 export SPINORAMA_API_BIND="${SPINORAMA_API_BIND:-unix:/home/spin/run/gunicorn.sock}"
+# On-the-fly /compare.webp pictures are cached here (content-hashed);
+# the API renders at most SPINORAMA_COMPARE_MAX_RENDERS_PER_MIN per
+# minute (default 20) and answers 503 + Retry-After beyond that.
+export SPINORAMA_COMPARE_CACHE="${SPINORAMA_COMPARE_CACHE:-$DIR/cache/compare}"
 # SPINORAMA_FINGERPRINT_SECRET must be set in the service environment
 # (supervisor/systemd) to enable per-key fingerprinting.
 

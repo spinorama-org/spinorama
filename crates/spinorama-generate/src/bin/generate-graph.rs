@@ -209,7 +209,7 @@ fn sibling_eq_dir(dir: &Path) -> PathBuf {
     }
 }
 
-fn write_styled(args: &Args, dir: &Path, figure: &Figure) -> Result<PathBuf> {
+fn write_styled(args: &Args, dir: &Path, figure: &Figure) -> Result<(PathBuf, bool)> {
     if args.scan_hard {
         let mut styled = figure.clone();
         apply_scan_style(&mut styled);
@@ -383,14 +383,16 @@ fn run_headphone(args: &Args, freq: &[f64], spl: &[f64], started: Instant) -> Re
         .join(&args.version);
     let mut wrote_any = false;
     for figure in &figures {
-        let target = out_dir.join(format!("{}.json", figure.name));
-        if !args.force && target.is_file() {
-            println!("skip (exists, use --force): {}", target.display());
-            continue;
+        // Content-compared writes: an existing file is only skipped
+        // when the serialized payload is identical, so generator
+        // changes reach disk without needing --force.
+        let (written, changed) = write_styled(args, &out_dir, figure)?;
+        wrote_any |= changed;
+        if changed {
+            println!("wrote {}", written.display());
+        } else {
+            println!("skip (unchanged): {}", written.display());
         }
-        let written = write_styled(args, &out_dir, figure)?;
-        wrote_any = true;
-        println!("wrote {}", written.display());
     }
     println!(
         "headphone: {} figures in {:?}",
@@ -424,9 +426,13 @@ fn dir_has_files(dir: &Path, extension: &str) -> bool {
 
 /// Renders PNGs and converts WebP only when something is stale.
 ///
-/// A rerun whose figure JSONs were all skipped and whose PNG/WebP
-/// outputs already exist does no rendering work, which keeps the
-/// batch mode of `update_website.sh` incremental.
+/// A rerun whose figure JSONs were unchanged, whose renderer binary
+/// is unchanged (see `renderer_spec`), and whose PNG/WebP outputs
+/// already exist does no rendering work, which keeps the batch mode
+/// of `update_website.sh` incremental. Tests inject an explicit
+/// renderer binary (`--render-images-bin` / `SPINORAMA_RENDER_IMAGES`),
+/// identified by path, and share output roots, so the stamp only
+/// gates the default renderer.
 fn render_if_stale(
     args: &Args,
     json_dir: &Path,
@@ -435,18 +441,30 @@ fn render_if_stale(
     seed_prefix: &str,
     wrote_any: bool,
 ) -> Result<()> {
+    use spinorama_generate::render::{renderer_current, renderer_spec, write_renderer_stamp};
     let webp_dir = webp_dir_override
         .map(Path::to_path_buf)
         .or_else(|| args.webp_dir.clone())
         .unwrap_or_else(|| args.data_dir.join("dist/speakers"));
+    // The stamp is per payload directory: one renderer change must
+    // re-render every directory, and a shared stamp written by an
+    // early variant would mask the ones processed after it.
+    let spec = renderer_spec(&args.render_images_bin)?;
+    let is_default_bin =
+        args.render_images_bin == Path::new(spinorama_generate::render::DEFAULT_RENDER_IMAGES_BIN);
+    let renderer_changed = is_default_bin && !renderer_current(png_dir, &spec);
     let pngs_exist = dir_has_files(png_dir, "png");
     let webps_exist = !args.render_webp || dir_has_files(&webp_dir, "webp");
-    if args.force || wrote_any || !pngs_exist {
+    if args.force || wrote_any || renderer_changed || !pngs_exist {
         render_pngs(&args.render_images_bin, json_dir, png_dir)?;
         println!("rendered PNGs under {}", png_dir.display());
     }
-    if args.force || wrote_any || !webps_exist {
+    if args.force || wrote_any || renderer_changed || !webps_exist {
         maybe_webp(args, png_dir, webp_dir_override, seed_prefix)?;
+    }
+    // Record the renderer that produced this directory's images.
+    if args.force || wrote_any || renderer_changed || !pngs_exist {
+        write_renderer_stamp(png_dir, &spec)?;
     }
     Ok(())
 }
@@ -455,7 +473,7 @@ fn render_if_stale(
 ///
 /// Stale JSON/PNG/WebP outputs for skipped stems are removed so the
 /// renderer never sees a contour it cannot draw.
-const CONTOUR_STEMS: [&str; 8] = [
+const CONTOUR_STEMS: [&str; 12] = [
     "SPL Horizontal Contour",
     "SPL Vertical Contour",
     "SPL Horizontal Contour Normalized",
@@ -464,6 +482,10 @@ const CONTOUR_STEMS: [&str; 8] = [
     "SPL Vertical Contour 3D",
     "SPL Horizontal Contour Normalized 3D",
     "SPL Vertical Contour Normalized 3D",
+    "SPL Horizontal Globe",
+    "SPL Vertical Globe",
+    "SPL Horizontal Globe Normalized",
+    "SPL Vertical Globe Normalized",
 ];
 
 fn remove_stale_contours(figures: &[Figure], dirs: &[&Path]) {
@@ -551,14 +573,14 @@ fn run_one(args: &Args) -> Result<()> {
         .join(&args.version);
     let mut wrote_any = false;
     for figure in &figures {
-        let target = out_dir.join(format!("{}.json", figure.name));
-        if !args.force && target.is_file() {
-            println!("skip (exists, use --force): {}", target.display());
-            continue;
+        // Content-compared writes, as in the headphone path above.
+        let (written, changed) = write_styled(args, &out_dir, figure)?;
+        wrote_any |= changed;
+        if changed {
+            println!("wrote {}", written.display());
+        } else {
+            println!("skip (unchanged): {}", written.display());
         }
-        let written = write_styled(args, &out_dir, figure)?;
-        wrote_any = true;
-        println!("wrote {}", written.display());
     }
     remove_stale_contours(&figures, &[&out_dir]);
     println!(
@@ -664,14 +686,13 @@ fn run_one(args: &Args) -> Result<()> {
                     .unwrap_or_else(|| out_dir.clone());
                 let mut wrote_eq = false;
                 for figure in &eq_figures {
-                    let target = eq_dir.join(format!("{}.json", figure.name));
-                    if !args.force && target.is_file() {
-                        println!("skip (exists, use --force): {}", target.display());
-                        continue;
+                    let (written, changed) = write_styled(args, &eq_dir, figure)?;
+                    wrote_eq |= changed;
+                    if changed {
+                        println!("wrote {}", written.display());
+                    } else {
+                        println!("skip (unchanged): {}", written.display());
                     }
-                    let written = write_styled(args, &eq_dir, figure)?;
-                    wrote_eq = true;
-                    println!("wrote {}", written.display());
                 }
                 println!("{} EQ figures from {}", eq_figures.len(), eq_file.display());
                 if args.render_png {

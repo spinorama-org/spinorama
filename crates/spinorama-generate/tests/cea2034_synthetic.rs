@@ -2,8 +2,10 @@
 
 // Rust guideline compliant 2026-02-21
 
-use spinorama_generate::compute::cea2034::{compute_cea2034, sound_power_weights};
-use spinorama_generate::figures::common_figures;
+use spinorama_generate::compute::cea2034::{
+    compute_cea2034, compute_spin_data, sound_power_weights,
+};
+use spinorama_generate::figures::{common_figures, spin_figures};
 use spinorama_generate::measurements::{HvSpl, SplPlane};
 
 fn omni_plane(level_db: f64) -> SplPlane {
@@ -88,4 +90,70 @@ fn common_figures_carry_the_six_cea_traces() {
             "Sound Power DI"
         ]
     );
+}
+
+#[test]
+fn spl_plane_figures_have_no_regression_overlay() {
+    let hv = HvSpl {
+        horizontal: omni_plane(85.0),
+        vertical: omni_plane(85.0),
+    };
+    let data = compute_spin_data(&hv).expect("spin data computes");
+    let figures = spin_figures(&data, "Test Speaker", "Lab", (20.0, 20_000.0));
+    for name in ["SPL Horizontal", "SPL Vertical"] {
+        let figure = figures
+            .iter()
+            .find(|f| f.name == name)
+            .unwrap_or_else(|| panic!("{name} generated"));
+        assert!(
+            figure
+                .traces
+                .iter()
+                .all(|t| !t.name.contains("Band") && t.name != "Trend line"),
+            "{name} still carries regression traces: {:?}",
+            figure.traces.iter().map(|t| &t.name).collect::<Vec<_>>()
+        );
+        assert!(!figure.show_zero_line, "{name} must hide the 0 dB line");
+    }
+    let normalized = figures
+        .iter()
+        .find(|f| f.name == "SPL Horizontal Normalized")
+        .expect("normalized SPL generated");
+    assert!(normalized.show_zero_line);
+    // Globe payloads exist for every contour plane, or the site
+    // catalog's Globe graphs have nothing to render.
+    for name in [
+        "SPL Horizontal Globe",
+        "SPL Vertical Globe",
+        "SPL Horizontal Globe Normalized",
+        "SPL Vertical Globe Normalized",
+        "SPL Horizontal Contour 3D",
+        "SPL Vertical Contour 3D",
+    ] {
+        assert!(
+            figures.iter().any(|f| f.name == name),
+            "missing figure {name}"
+        );
+    }
+}
+
+#[test]
+fn on_axis_and_inroom_figures_hide_the_zero_line() {
+    let hv = HvSpl {
+        horizontal: omni_plane(85.0),
+        vertical: omni_plane(85.0),
+    };
+    let cea = compute_cea2034(&hv).expect("omni CEA2034 computes");
+    let figures = common_figures(&cea, None, "Test Speaker", "Lab", (20.0, 20_000.0));
+    for figure in &figures {
+        let expected = !matches!(
+            figure.name.as_str(),
+            "On Axis" | "Estimated In-Room Response"
+        );
+        assert_eq!(
+            figure.show_zero_line, expected,
+            "zero line flag for {}",
+            figure.name
+        );
+    }
 }
