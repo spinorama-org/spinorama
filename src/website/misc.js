@@ -554,23 +554,4 @@ export function getUrlParameter(name) {
     return urlParams.get(name);
 }
 
-// Check if feature flag is enabled
-export function isPlotlyEnabled() {
-    const plotlyFlag = getUrlParameter('plotly');
-    return plotlyFlag === 'true' || plotlyFlag === '1';
-}
 
-// Check if ploty flag is enabled AND we're in compact mode (mobile-like)
-export function shouldDisablePlotlyInteraction() {
-    const plotyFlag = getUrlParameter('ploty');
-    if (plotyFlag !== '1') {
-        return false;
-    }
-
-    // Use the same compact detection logic as the plotting code
-    const windowWidth = window.innerWidth;
-    const windowHeight = window.innerHeight;
-    const graphSmall = 550; // Same constant as in plot.js
-
-    return windowWidth < graphSmall || windowHeight < graphSmall;
-}

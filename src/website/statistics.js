@@ -16,10 +16,379 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-/*global Plotly*/
 /*eslint no-undef: "error"*/
 
 import { getMetadata } from './download.js';
+
+// Minimal SVG chart renderer covering the trace/layout subset used by
+// this page (histogram, scatter markers/lines, bar, box, violin).
+// It replaces the Plotly dependency: charts are static SVG with a
+// <title> tooltip per point.
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+function svgEl(name, attrs = {}, text = null) {
+    const node = document.createElementNS(SVG_NS, name);
+    for (const [key, value] of Object.entries(attrs)) {
+        node.setAttribute(key, value);
+    }
+    if (text !== null) node.textContent = text;
+    return node;
+}
+
+function fmtTick(v) {
+    if (!isFinite(v)) return '';
+    const a = Math.abs(v);
+    if (a >= 1000) return String(Math.round(v));
+    if (a >= 100) return String(parseFloat(v.toFixed(1)));
+    if (a >= 1) return String(parseFloat(v.toFixed(2)));
+    return String(parseFloat(v.toFixed(3)));
+}
+
+function niceScale(min, max, count = 5) {
+    if (!isFinite(min) || !isFinite(max) || min === max) {
+        min = (min || 0) - 1;
+        max = (max || 0) + 1;
+    }
+    const span = max - min;
+    const step0 = span / count;
+    const mag = Math.pow(10, Math.floor(Math.log10(step0)));
+    const norm = step0 / mag;
+    const step = (norm >= 5 ? 10 : norm >= 2 ? 5 : norm >= 1 ? 2 : 1) * mag;
+    const lo = Math.floor(min / step) * step;
+    const hi = Math.ceil(max / step) * step;
+    const ticks = [];
+    for (let v = lo; v <= hi + step * 1e-9; v += step) ticks.push(parseFloat(v.toFixed(10)));
+    return { lo, hi, ticks };
+}
+
+function logScale(min, max) {
+    const lo = Math.pow(10, Math.floor(Math.log10(Math.max(min, 1e-9))));
+    const hi = Math.pow(10, Math.ceil(Math.log10(Math.max(max, lo * 10))));
+    const ticks = [];
+    for (let v = lo; v <= hi * 1.0001; v *= 10) ticks.push(v);
+    return { lo, hi, ticks };
+}
+
+function extent(values, positiveOnly = false) {
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (const v of values) {
+        if (typeof v !== 'number' || !isFinite(v)) continue;
+        if (positiveOnly && v <= 0) continue;
+        if (v < lo) lo = v;
+        if (v > hi) hi = v;
+    }
+    return [lo, hi];
+}
+
+export function newPlot(divname, data, layout) {
+    const target = document.getElementById(divname);
+    if (!target) return;
+    target.innerHTML = '';
+
+    const width = 760;
+    const height = layout.height || 400;
+    const margin = { l: 58, r: 16, t: 36, b: 72 };
+    const plotW = width - margin.l - margin.r;
+    const plotH = height - margin.t - margin.b;
+
+    const svg = svgEl('svg', {
+        viewBox: `0 0 ${width} ${height}`,
+        width: '100%',
+        role: 'img',
+        style: 'max-width:100%;height:auto;font-family:inherit;',
+    });
+    const gridColor = '#e5e5e5';
+    const axisColor = '#999';
+    const textColor = '#4a4a4a';
+    const fontSize = 11;
+
+    const title = layout.title?.text || '';
+    if (title) {
+        svg.appendChild(svgEl('text', { x: margin.l, y: 20, 'font-size': 14, 'font-weight': 600, fill: textColor }, title));
+    }
+
+    const kinds = new Set(data.map((t) => t.type || 'scatter'));
+    const isHistogram = kinds.has('histogram');
+    const isDistribution = kinds.has('box') || kinds.has('violin');
+
+    let xTicks = [];
+    let drawLegend = [];
+
+    function drawAxes(xScale, yScale, xTickList, yTickList) {
+        for (const t of yTickList) {
+            const y = yScale(t);
+            svg.appendChild(svgEl('line', { x1: margin.l, x2: margin.l + plotW, y1: y, y2: y, stroke: gridColor, 'stroke-width': 1 }));
+            svg.appendChild(
+                svgEl('text', { x: margin.l - 6, y: y + 4, 'text-anchor': 'end', 'font-size': fontSize, fill: textColor }, fmtTick(t))
+            );
+        }
+        for (const t of xTickList) {
+            const x = xScale(t);
+            svg.appendChild(
+                svgEl('text', { x, y: margin.t + plotH + 16, 'text-anchor': 'middle', 'font-size': fontSize, fill: textColor }, fmtTick(t))
+            );
+        }
+        svg.appendChild(
+            svgEl('line', { x1: margin.l, x2: margin.l, y1: margin.t, y2: margin.t + plotH, stroke: axisColor, 'stroke-width': 1 })
+        );
+        svg.appendChild(
+            svgEl('line', {
+                x1: margin.l,
+                x2: margin.l + plotW,
+                y1: margin.t + plotH,
+                y2: margin.t + plotH,
+                stroke: axisColor,
+                'stroke-width': 1,
+            })
+        );
+        const xTitle = typeof layout.xaxis?.title === 'string' ? layout.xaxis.title : '';
+        const yTitle = typeof layout.yaxis?.title === 'string' ? layout.yaxis.title : '';
+        if (xTitle) {
+            svg.appendChild(
+                svgEl(
+                    'text',
+                    { x: margin.l + plotW / 2, y: margin.t + plotH + 34, 'text-anchor': 'middle', 'font-size': 12, fill: textColor },
+                    xTitle
+                )
+            );
+        }
+        if (yTitle) {
+            svg.appendChild(
+                svgEl(
+                    'text',
+                    {
+                        x: 14,
+                        y: margin.t + plotH / 2,
+                        'text-anchor': 'middle',
+                        'font-size': 12,
+                        fill: textColor,
+                        transform: `rotate(-90 14 ${margin.t + plotH / 2})`,
+                    },
+                    yTitle
+                )
+            );
+        }
+    }
+
+    function makeScale(axisLayout, values, rangeLo, rangeHi, forceZero = false) {
+        const isLog = axisLayout?.type === 'log';
+        let [lo, hi] = axisLayout?.range ? [...axisLayout.range] : extent(values, isLog);
+        if (forceZero && !isLog) lo = Math.min(lo, 0);
+        const scaled = isLog ? logScale(lo, hi) : niceScale(axisLayout?.range ? lo : lo, axisLayout?.range ? hi : hi);
+        if (axisLayout?.range && !isLog) {
+            scaled.lo = lo;
+            scaled.hi = hi;
+            scaled.ticks = niceScale(lo, hi).ticks.filter((t) => t >= lo && t <= hi);
+        }
+        const domain = isLog ? [Math.log10(scaled.lo), Math.log10(scaled.hi)] : [scaled.lo, scaled.hi];
+        const scale = (v) => {
+            const x = isLog ? Math.log10(Math.max(v, 1e-12)) : v;
+            return rangeLo + ((x - domain[0]) / (domain[1] - domain[0])) * (rangeHi - rangeLo);
+        };
+        return { scale, ticks: scaled.ticks, lo: scaled.lo, hi: scaled.hi };
+    }
+
+    if (isHistogram) {
+        const allX = data.flatMap((t) => t.x || []);
+        const [dataLo, dataHi] = layout.xaxis?.range ? [...layout.xaxis.range] : extent(allX);
+        const first = data[0] || {};
+        let binEdges;
+        if (first.xbins?.size) {
+            const start = first.xbins.start ?? dataLo;
+            const end = first.xbins.end ?? dataHi;
+            binEdges = [];
+            for (let v = start; v < end; v += first.xbins.size) binEdges.push(v);
+            binEdges.push(end);
+        } else {
+            const nbins = first.nbinsx || 20;
+            binEdges = Array.from({ length: nbins + 1 }, (_, i) => dataLo + ((dataHi - dataLo) * i) / nbins);
+        }
+        const counts = data.map((trace) => {
+            const bins = Array.from({ length: binEdges.length - 1 }, () => 0);
+            for (const v of trace.x || []) {
+                if (typeof v !== 'number' || !isFinite(v) || v < binEdges[0] || v > binEdges[binEdges.length - 1]) continue;
+                let idx = binEdges.findIndex((e, i) => i > 0 && v <= e) - 1;
+                if (idx < 0) idx = 0;
+                bins[Math.min(idx, bins.length - 1)]++;
+            }
+            return bins;
+        });
+        const maxCount = Math.max(1, ...counts.flat());
+        const xs = makeScale({ range: [binEdges[0], binEdges[binEdges.length - 1]] }, [], margin.l, margin.l + plotW);
+        const ys = makeScale(null, [0, maxCount], margin.t + plotH, margin.t, true);
+        drawAxes(xs.scale, ys.scale, xs.ticks, ys.ticks);
+        data.forEach((trace, ti) => {
+            const color = trace.marker?.color || '#1f77b4';
+            counts[ti].forEach((count, bi) => {
+                if (count === 0) return;
+                const x0 = xs.scale(binEdges[bi]);
+                const x1 = xs.scale(binEdges[bi + 1]);
+                const y0 = ys.scale(count);
+                const rect = svgEl('rect', {
+                    x: x0 + 0.5,
+                    y: y0,
+                    width: Math.max(x1 - x0 - 1, 1),
+                    height: margin.t + plotH - y0,
+                    fill: color,
+                    'fill-opacity': trace.opacity ?? 0.6,
+                });
+                rect.appendChild(svgEl('title', {}, `${trace.name || ''}: ${count} in [${fmtTick(binEdges[bi])}, ${fmtTick(binEdges[bi + 1])})`));
+                svg.appendChild(rect);
+            });
+            if (trace.name) drawLegend.push({ name: trace.name, color });
+        });
+        xTicks = xs.ticks;
+    } else if (isDistribution) {
+        const allY = data.flatMap((t) => (t.y || []).filter((v) => typeof v === 'number' && isFinite(v)));
+        const ys = makeScale(layout.yaxis, allY, margin.t + plotH, margin.t);
+        const catW = plotW / Math.max(data.length, 1);
+        const xs = (i) => margin.l + catW * (i + 0.5);
+        drawAxes(() => 0, ys.scale, [], ys.ticks);
+        data.forEach((trace, ti) => {
+            const values = (trace.y || []).filter((v) => typeof v === 'number' && isFinite(v)).sort((a, b) => a - b);
+            if (values.length === 0) return;
+            const color = trace.marker?.color || '#1f77b4';
+            const cx = xs(ti);
+            const quantile = (q) => values[Math.min(values.length - 1, Math.floor(q * values.length))];
+            if (trace.type === 'violin') {
+                const mean = values.reduce((a, b) => a + b, 0) / values.length;
+                const sd = Math.sqrt(values.reduce((a, b) => a + (b - mean) ** 2, 0) / values.length) || 1;
+                const bw = Math.max(1.06 * sd * Math.pow(values.length, -0.2), (values[values.length - 1] - values[0]) / 50 || 1);
+                const pts = [];
+                let maxD = 0;
+                for (let i = 0; i <= 40; i++) {
+                    const v = values[0] + ((values[values.length - 1] - values[0]) * i) / 40;
+                    let d = 0;
+                    for (const u of values) d += Math.exp(-0.5 * ((v - u) / bw) ** 2);
+                    pts.push([v, d]);
+                    if (d > maxD) maxD = d;
+                }
+                const half = catW * 0.42;
+                const left = pts.map(([v, d]) => `${cx - (d / maxD) * half},${ys.scale(v)}`).join(' ');
+                const right = pts
+                    .slice()
+                    .reverse()
+                    .map(([v, d]) => `${cx + (d / maxD) * half},${ys.scale(v)}`)
+                    .join(' ');
+                svg.appendChild(svgEl('polygon', { points: `${left} ${right}`, fill: color, 'fill-opacity': 0.5, stroke: color }));
+            } else {
+                const q1 = quantile(0.25);
+                const med = quantile(0.5);
+                const q3 = quantile(0.75);
+                const w = catW * 0.5;
+                svg.appendChild(
+                    svgEl('line', { x1: cx, x2: cx, y1: ys.scale(values[0]), y2: ys.scale(values[values.length - 1]), stroke: color })
+                );
+                svg.appendChild(
+                    svgEl('rect', {
+                        x: cx - w / 2,
+                        y: ys.scale(q3),
+                        width: w,
+                        height: Math.max(ys.scale(q1) - ys.scale(q3), 1),
+                        fill: color,
+                        'fill-opacity': 0.5,
+                        stroke: color,
+                    })
+                );
+                svg.appendChild(svgEl('line', { x1: cx - w / 2, x2: cx + w / 2, y1: ys.scale(med), y2: ys.scale(med), stroke: color, 'stroke-width': 2 }));
+            }
+            svg.appendChild(
+                svgEl('text', { x: cx, y: margin.t + plotH + 16, 'text-anchor': 'middle', 'font-size': fontSize, fill: textColor }, trace.name || '')
+            );
+        });
+    } else {
+        const allX = data.flatMap((t) => t.x || []);
+        const allY = data.flatMap((t) => t.y || []);
+        const hasBar = kinds.has('bar');
+        const xs = makeScale(layout.xaxis, allX, margin.l, margin.l + plotW);
+        const ys = makeScale(layout.yaxis, allY, margin.t + plotH, margin.t, hasBar);
+        drawAxes(xs.scale, ys.scale, xs.ticks, ys.ticks);
+        xTicks = xs.ticks;
+        for (const trace of data) {
+            const color = trace.marker?.color || trace.line?.color || '#1f77b4';
+            if (trace.name) drawLegend.push({ name: trace.name, color });
+            if (trace.type === 'bar') {
+                const sortedX = [...new Set(trace.x || [])].sort((a, b) => a - b);
+                let minGap = plotW / 20;
+                for (let i = 1; i < sortedX.length; i++) minGap = Math.min(minGap, Math.abs(xs.scale(sortedX[i]) - xs.scale(sortedX[i - 1])));
+                const w = Math.max(minGap * 0.8, 2);
+                (trace.x || []).forEach((xv, i) => {
+                    const yv = trace.y?.[i];
+                    if (!isFinite(xv) || !isFinite(yv)) return;
+                    const y0 = ys.scale(Math.max(yv, 0));
+                    const rect = svgEl('rect', {
+                        x: xs.scale(xv) - w / 2,
+                        y: y0,
+                        width: w,
+                        height: Math.max(margin.t + plotH - y0, 0),
+                        fill: color,
+                        'fill-opacity': trace.opacity ?? 0.8,
+                    });
+                    rect.appendChild(svgEl('title', {}, `${trace.text?.[i] || trace.name || ''}: ${fmtTick(xv)}, ${fmtTick(yv)}`));
+                    svg.appendChild(rect);
+                });
+                continue;
+            }
+            const mode = trace.mode || 'lines';
+            if (mode.includes('lines')) {
+                const pts = (trace.x || [])
+                    .map((xv, i) => [xv, trace.y?.[i]])
+                    .filter(([xv, yv]) => isFinite(xv) && isFinite(yv) && (!layout.xaxis || layout.xaxis.type !== 'log' || xv > 0))
+                    .map(([xv, yv]) => `${xs.scale(xv)},${ys.scale(yv)}`)
+                    .join(' ');
+                if (pts) {
+                    svg.appendChild(
+                        svgEl('polyline', {
+                            points: pts,
+                            fill: 'none',
+                            stroke: trace.line?.color || color,
+                            'stroke-width': trace.line?.width || 1.5,
+                            'stroke-dasharray': trace.line?.dash === 'dash' ? '6 4' : trace.line?.dash === 'dot' ? '2 3' : 'none',
+                        })
+                    );
+                }
+            }
+            if (mode.includes('markers')) {
+                const r = (trace.marker?.size || 8) / 2;
+                (trace.x || []).forEach((xv, i) => {
+                    const yv = trace.y?.[i];
+                    if (!isFinite(xv) || !isFinite(yv)) return;
+                    if (layout.xaxis?.type === 'log' && xv <= 0) return;
+                    const circle = svgEl('circle', {
+                        cx: xs.scale(xv),
+                        cy: ys.scale(yv),
+                        r,
+                        fill: color,
+                        'fill-opacity': trace.opacity ?? 0.8,
+                        stroke: trace.marker?.line?.color || 'none',
+                        'stroke-width': trace.marker?.line?.width || 0,
+                    });
+                    circle.appendChild(svgEl('title', {}, `${trace.text?.[i] || trace.name || ''}: ${fmtTick(xv)}, ${fmtTick(yv)}`));
+                    svg.appendChild(circle);
+                });
+            }
+        }
+    }
+
+    if (!isDistribution && drawLegend.length > 0) {
+        let lx = margin.l;
+        let ly = height - 18;
+        for (const entry of drawLegend) {
+            const w = 18 + entry.name.length * 6.5 + 16;
+            if (lx + w > width - margin.r) {
+                lx = margin.l;
+                ly -= 16;
+            }
+            svg.appendChild(svgEl('rect', { x: lx, y: ly - 9, width: 12, height: 12, fill: entry.color, 'fill-opacity': 0.8 }));
+            svg.appendChild(svgEl('text', { x: lx + 16, y: ly + 2, 'font-size': fontSize, fill: textColor }, entry.name));
+            lx += w;
+        }
+    }
+
+    target.appendChild(svg);
+    return xTicks;
+}
 
 getMetadata()
     .then((metadata) => {
@@ -59,7 +428,7 @@ getMetadata()
                 },
                 margin: { l: 50, r: 20, t: 40, b: 40 },
             };
-            Plotly.newPlot('visScoreDistribution', data, layout, { responsive: true });
+            newPlot('visScoreDistribution', data, layout, { responsive: true });
         }
 
         function plotScoreDistributionWsub(scores, scoresEQ) {
@@ -101,7 +470,7 @@ getMetadata()
                 },
                 margin: { l: 50, r: 20, t: 40, b: 40 },
             };
-            Plotly.newPlot('visScoreDistributionWsub', data, layout, { responsive: true });
+            newPlot('visScoreDistributionWsub', data, layout, { responsive: true });
         }
 
         function computeParetoFrontier(points) {
@@ -269,7 +638,7 @@ getMetadata()
                 hovermode: 'closest',
                 margin: { l: 50, r: 20, t: 40, b: 40 },
             };
-            Plotly.newPlot(divname, data, layout, { responsive: true });
+            newPlot(divname, data, layout, { responsive: true });
         }
 
         function plotParameters(name, title, param, scores, names, divname) {
@@ -297,7 +666,7 @@ getMetadata()
                 },
                 margin: { l: 50, r: 20, t: 40, b: 40 },
             };
-            Plotly.newPlot(divname, data, layout, { responsive: true });
+            newPlot(divname, data, layout, { responsive: true });
         }
 
         function getFilterFromURL() {
@@ -715,7 +1084,7 @@ getMetadata()
                 layout.barmode = 'overlay';
             }
 
-            Plotly.newPlot('visCustomChart', data, layout, { responsive: true });
+            newPlot('visCustomChart', data, layout, { responsive: true });
         }
 
         function updateHistogramOptions() {

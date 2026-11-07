@@ -15,7 +15,7 @@ import {
     constructCompareUrl,
     isCompareOverlayMeasurement,
 } from './download.js';
-import { knownMeasurements } from './plot.js';
+import { knownMeasurements } from './plot-labels.js';
 
 function updateVersion(metaSpeakers, speaker, selector, origin, version) {
     const versions = Object.keys(metaSpeakers[speaker].measurements);

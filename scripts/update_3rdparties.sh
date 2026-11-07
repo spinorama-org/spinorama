@@ -2,7 +2,6 @@
 
 # warning this section is read by a python script (generate_html) to grab the versions
 
-PLOTLY=4.0.0
 HANDLEBARS=4.7.9
 BULMA=1.0.4
 FUSE=7.4.2
@@ -28,6 +27,4 @@ npx sass --load-path=node_modules src/website/bulma4spin.scss dist/css/bulma-${B
 npm install fuse.js
 cp node_modules/fuse.js/dist/fuse.min.mjs ${ASSETS_JS}/fuse-${FUSE}.min.mjs
 
-# PLOTLY
-npm install plotly.js-dist-min
-cp node_modules/plotly.js-dist-min/plotly.min.js ${ASSETS_JS}/plotly-${PLOTLY}.min.mjs
+

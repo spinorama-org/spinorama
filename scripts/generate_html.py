@@ -94,20 +94,16 @@ def get_files(dir: str, ext: str) -> list[str]:
 
 
 WEBSITE_JS_FILES = (
-    "annotation-layout",
     "compare",
     "download",
     "error",
     "eqs",
-    "graph",
     "index",
     "meta",
     "misc",
     "onload",
     "pagination",
-    "plot",
     "plot-labels",
-    "plot-config",
     "scores",
     "search",
     "similar",
@@ -117,7 +113,6 @@ WEBSITE_JS_FILES = (
     "headphone_index",
     "headphone_eqs",
     "headphone_scores",
-    "headphone_target",
 )
 
 
@@ -214,10 +209,6 @@ def adapt_imports(jscode, versions: dict[str, str], js_files: list[str], mini: s
             " from 'handlebars.js';",
             " from '/js3rd/handlebars-{}.min.js';".format(versions["HANDLEBARS"]),
         ),
-        (
-            "import Plotly from 'plotly.js-dist-min';",
-            "",  # because module support is complicated :(
-        ),
     ]
     re_replacements = [
         (
@@ -257,6 +248,10 @@ CONTOUR_FILTER = [
     "SPL Vertical Contour 3D",
     "SPL Horizontal Contour Normalized 3D",
     "SPL Vertical Contour Normalized 3D",
+    "SPL Horizontal Globe",
+    "SPL Vertical Globe",
+    "SPL Horizontal Globe Normalized",
+    "SPL Vertical Globe Normalized",
 ]
 
 RADAR_FILTER = [

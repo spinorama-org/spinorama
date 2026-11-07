@@ -61,17 +61,7 @@
           </div>
         </div>
 
-        <!-- Plot settings — populated by JS -->
-        <h2 class="title is-5 mt-5 mb-3">Plot settings</h2>
-        <div id="global-config-panel"></div>
-
       </div>
     </div>
-
-    <script type="module">
-      import { loadConfigFromStorage, initGlobalConfigPanel } from '/js/plot-config-${versions['CACHE']}${min}.js';
-      const config = loadConfigFromStorage('Graph');
-      initGlobalConfigPanel(config);
-    </script>
   </body>
 </html>

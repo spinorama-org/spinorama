@@ -14,7 +14,7 @@ import {
     constructCompareUrl,
     isCompareOverlayMeasurement,
 } from './download.js';
-import { knownMeasurements } from './plot.js';
+import { knownMeasurements } from './plot-labels.js';
 
 function getNearSpeakers(metadata) {
     const metaSpeakers = {};
