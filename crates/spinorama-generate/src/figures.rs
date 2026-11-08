@@ -500,20 +500,10 @@ fn derived_normalized(cea: &Cea2034) -> Cea2034 {
     }
 }
 
-fn cea_spl_range(cea: &Cea2034) -> (f64, f64) {
-    let max_spl = [
-        &cea.on_axis,
-        &cea.listening_window,
-        &cea.early_reflections,
-        &cea.sound_power,
-    ]
-    .iter()
-    .flat_map(|curve| curve.iter().copied())
-    .filter(|value| value.is_finite())
-    .fold(0.0_f64, f64::max);
-    let top = 5.0 + (max_spl / 5.0).trunc() * 5.0;
-    (top - 50.0, top)
-}
+/// Primary SPL axis range in dB, matching the Python spin layout.
+/// The payload writer applies the same range to every SPL figure
+/// that does not carry an explicit `y_range`.
+pub const SPL_Y_RANGE_DB: (f64, f64) = (-45.0, 5.0);
 
 fn valid_range_traces(valid_freq_range: (f64, f64), spl_range: (f64, f64)) -> Vec<Trace> {
     let (min_freq, max_freq) = valid_freq_range;
@@ -551,13 +541,17 @@ fn valid_range_traces(valid_freq_range: (f64, f64), spl_range: (f64, f64)) -> Ve
     traces
 }
 
-fn append_valid_range(figures: &mut [Figure], valid_freq_range: (f64, f64), spl_range: (f64, f64)) {
-    let traces = valid_range_traces(valid_freq_range, spl_range);
-    if traces.is_empty() {
-        return;
-    }
+fn append_valid_range(figures: &mut [Figure], valid_freq_range: (f64, f64)) {
     for figure in figures {
-        figure.traces.extend(traces.iter().cloned());
+        // The N/A zones span the figure's full axis range so the
+        // grey rectangles always reach the plot edges.
+        let spl_range = figure
+            .y_range
+            .map(|[lo, hi]| (lo, hi))
+            .unwrap_or(SPL_Y_RANGE_DB);
+        figure
+            .traces
+            .extend(valid_range_traces(valid_freq_range, spl_range));
     }
 }
 
@@ -629,13 +623,7 @@ pub fn common_figures(
             ),
         ),
     ];
-    append_valid_range(&mut figures[0..1], valid_freq_range, cea_spl_range(cea));
-    append_valid_range(
-        &mut figures[1..2],
-        valid_freq_range,
-        cea_spl_range(normalized),
-    );
-    append_valid_range(&mut figures[2..], valid_freq_range, (-40.0, 10.0));
+    append_valid_range(&mut figures, valid_freq_range);
     figures
 }
 
@@ -751,7 +739,7 @@ pub fn spin_figures(
         title("SPL Vertical Normalized"),
         &data.vertical_normalized,
     ));
-    append_valid_range(&mut hv_scatter, valid_freq_range, (-40.0, 10.0));
+    append_valid_range(&mut hv_scatter, valid_freq_range);
     figures.extend(hv_scatter);
 
     let contour_h = contour_figure(

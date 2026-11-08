@@ -5,10 +5,10 @@
 use anyhow::{Result, bail};
 use serde_json::{Value, json};
 
-use crate::figures::{Axis, Figure, FigureKind, Visibility};
+use crate::figures::{Axis, Figure, FigureKind, SPL_Y_RANGE_DB, Visibility};
 
 /// Primary SPL axis range in dB, matching the Python spin layout.
-const Y_RANGE_DB: [f64; 2] = [-45.0, 5.0];
+const Y_RANGE_DB: [f64; 2] = [SPL_Y_RANGE_DB.0, SPL_Y_RANGE_DB.1];
 /// Secondary directivity-index axis range in dB.
 // DI axis aligned with the SPL axis (Python generate_yaxis_di default
 // -5..45 for a -45..5 SPL range, so DI 0 sits on the SPL -40 line and

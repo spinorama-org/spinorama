@@ -58,7 +58,9 @@ fn metadata_check_passes_on_repository() {
         "metadata errors: {:?}",
         &report.errors[..report.errors.len().min(5)]
     );
-    assert_eq!(report.speakers, 1167);
+    // Exact count on purpose: an accidental speaker drop or duplicate
+    // in the catalogue must fail loudly. Bump when speakers are added.
+    assert_eq!(report.speakers, 1168);
 }
 
 #[test]
