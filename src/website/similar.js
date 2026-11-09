@@ -40,6 +40,16 @@ function makeImage(src, alt) {
     return img;
 }
 
+function makeFigure(src, alt, caption) {
+    const figure = document.createElement('figure');
+    const cap = document.createElement('figcaption');
+    cap.className = 'is-size-7 has-text-weight-semibold';
+    cap.textContent = caption;
+    figure.appendChild(cap);
+    figure.appendChild(makeImage(src, alt));
+    return figure;
+}
+
 getMetadata()
     .then((metadata) => {
         const urlSimilar = '/similar.html?';
@@ -56,22 +66,30 @@ getMetadata()
 
         function pairInto(container, measurement, nameA, nameB) {
             container.replaceChildren();
+            // Stacked like the Python site: the reference speaker on
+            // top of each comparison, the neighbour below, each
+            // captioned with its name.
             const showSideBySide = () => {
                 container.replaceChildren(
-                    makeImage(constructSpeakerImageUrl(metaSpeakers, measurement, nameA, null, null), `${measurement} for ${nameA}`),
-                    makeImage(constructSpeakerImageUrl(metaSpeakers, measurement, nameB, null, null), `${measurement} for ${nameB}`)
+                    makeFigure(
+                        constructSpeakerImageUrl(metaSpeakers, measurement, nameA, null, null),
+                        `${measurement} for ${nameA}`,
+                        `${nameA} (reference)`
+                    ),
+                    makeFigure(constructSpeakerImageUrl(metaSpeakers, measurement, nameB, null, null), `${measurement} for ${nameB}`, nameB)
                 );
             };
             if (!isCompareOverlayMeasurement(measurement)) {
                 showSideBySide();
                 return;
             }
-            const img = makeImage(
+            const figure = makeFigure(
                 constructCompareUrl(metaSpeakers, measurement, defaultSide(nameA), defaultSide(nameB), 900),
-                `${measurement} comparison: ${nameA} vs ${nameB}`
+                `${measurement} comparison: ${nameA} vs ${nameB}`,
+                `${nameA} (reference) vs ${nameB}`
             );
-            img.addEventListener('error', showSideBySide, { once: true });
-            container.appendChild(img);
+            figure.querySelector('img')?.addEventListener('error', showSideBySide, { once: true });
+            container.appendChild(figure);
         }
 
         function updatePlots() {

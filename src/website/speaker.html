@@ -155,29 +155,10 @@
         <div class="graph-cell">
           <div class="box has-background-white-bis m-1 p-1">
             <a href="${g_key}/${contour | unmeltC, space2url}.html">
-              %if '3D' not in contour:
               <img src="./${g_key}/${contour | space2url}.webp" alt="${contour} graph for ${speaker}" loading="lazy" decoding="async" style="max-width:100%;height:auto">
-              %endif
             </a>
           </div>
         </div>
-        % endfor
-        % for contour in g_contour:
-        %   if '3D' in contour:
-        <div class="graph-cell">
-          <div class="box has-background-white-bis m-1 p-1">
-            <a href="${g_key}/${contour | unmeltC, space2url}.html">
-              <div id="${g_key}-${contour}">
-                <div class="buttons">
-                  <button class="button is-info">
-                    Click for the ${contour} graph
-                  </button>
-                </div>
-              </div>
-            </a>
-          </div>
-        </div>
-        %   endif
         % endfor
         % for radar in g_radar:
         <div class="graph-cell">

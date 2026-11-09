@@ -25,7 +25,7 @@ autoeq-workflow = { version = "0.5", git = "https://github.com/pierreaubert/auto
 base64 = "0.22"
 # Headless chart geometry only (scales); never link gpui here. GPU raster
 # goes through the existing spinorama-render-images binary boundary.
-d3rs = { package = "gpui-d3rs", version = "0.10", git = "https://github.com/pierreaubert/gpui-toolkit", default-features = false }
+d3rs = { package = "gpui-d3rs", version = "0.11", git = "https://github.com/pierreaubert/gpui-toolkit", default-features = false }
 flate2 = "1"
 fontdue = "0.9"
 hmac = "0.12"

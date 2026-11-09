@@ -12,6 +12,47 @@
       <img src="${graph | space2url}.webp" alt="${graph} graph for ${speaker}"
            style="max-width:100%;height:auto" decoding="async">
     </div>
+    <form id="graph-options" class="box" aria-label="Graph display options">
+      <div class="field is-grouped is-grouped-multiline">
+        <span class="control"><strong>Display:</strong></span>
+        <label class="control checkbox"><input type="checkbox" name="trend" checked> Trend lines</label>
+        <label class="control checkbox"><input type="checkbox" name="zones" checked> Zones</label>
+        <label class="control checkbox"><input type="checkbox" name="grid" checked> Grid</label>
+        <label class="control checkbox"><input type="checkbox" name="legend" checked> Legend</label>
+        <span class="control">
+          <label>Smoothing
+            <span class="select is-small">
+              <select name="smooth">
+                <option value="0">None</option>
+                <option value="0.0417">1/24 oct</option>
+                <option value="0.0833">1/12 oct</option>
+                <option value="0.1667">1/6 oct</option>
+                <option value="0.3333">1/3 oct</option>
+                <option value="0.5">1/2 oct</option>
+                <option value="1">1 oct</option>
+              </select>
+            </span>
+          </label>
+        </span>
+        <span class="control">
+          <label>SPL range
+            <span class="select is-small">
+              <select name="splrange">
+                <option value="">Auto</option>
+                <option value="30">30 dB</option>
+                <option value="40">40 dB</option>
+                <option value="50">50 dB</option>
+                <option value="60">60 dB</option>
+                <option value="80">80 dB</option>
+                <option value="100">100 dB</option>
+              </select>
+            </span>
+          </label>
+        </span>
+        <span class="control"><button type="button" class="button is-small" data-action="reset">Reset</button></span>
+      </div>
+    </form>
+    <script type="module" src="/js/graph_options-${versions['CACHE']}${min}.js"></script>
     <p class="has-text-grey is-size-7">
       Graph image from spinorama.org. Measurement data is available to
       approved noncommercial users through the API; see the documentation.

@@ -26,7 +26,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 /// Cache namespace; bump when the rendered picture changes shape.
-pub(crate) const COMPARE_CACHE_VERSION: &str = "compare-v3-rust";
+pub(crate) const COMPARE_CACHE_VERSION: &str = "compare-v4-rust";
 
 /// Measurements the comparison view may overlay (Python whitelist).
 pub(crate) const ALLOWED_MEASUREMENTS: [&str; 14] = [
@@ -67,6 +67,111 @@ const FALLBACK_COLORS: [&str; 10] = [
 const GRID: Rgb<u8> = Rgb([205, 205, 205]);
 const TEXT: Rgb<u8> = Rgb([35, 35, 35]);
 const AXIS: Rgb<u8> = Rgb([120, 120, 120]);
+
+/// Display options for a rendered graph picture, supplied as query
+/// parameters (`trend`, `zones`, `grid`, `legend`, `smooth`,
+/// `splrange`). Mirrors the old client-side plot configuration.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct RenderOptions {
+    pub trend: bool,
+    pub zones: bool,
+    pub grid: bool,
+    pub legend: bool,
+    /// Octave smoothing width (0 = off), applied in log-frequency.
+    pub smooth_oct: f64,
+    /// Force the primary Y axis to span this many dB.
+    pub spl_range_db: Option<f64>,
+}
+
+impl Default for RenderOptions {
+    fn default() -> Self {
+        Self {
+            trend: true,
+            zones: false,
+            grid: true,
+            legend: true,
+            smooth_oct: 0.0,
+            spl_range_db: None,
+        }
+    }
+}
+
+impl RenderOptions {
+    fn parse(query: &HashMap<String, String>, zones_default: bool) -> Self {
+        let flag = |key: &str, default: bool| {
+            query.get(key).map_or(default, |v| !matches!(v.as_str(), "0" | "false" | "off"))
+        };
+        let smooth_oct = query
+            .get("smooth")
+            .and_then(|v| v.parse::<f64>().ok())
+            .filter(|v| v.is_finite() && *v >= 0.0 && *v <= 1.0)
+            .unwrap_or(0.0);
+        let spl_range_db = query
+            .get("splrange")
+            .and_then(|v| v.parse::<f64>().ok())
+            .filter(|v| v.is_finite() && (10.0..=120.0).contains(v));
+        Self {
+            trend: flag("trend", true),
+            zones: flag("zones", zones_default),
+            grid: flag("grid", true),
+            legend: flag("legend", true),
+            smooth_oct,
+            spl_range_db,
+        }
+    }
+
+    /// Stable cache-key fragment; empty for the default options so
+    /// existing compare cache entries stay valid.
+    fn cache_key(&self) -> String {
+        if *self == Self::default() {
+            return String::new();
+        }
+        format!(
+            "t{}z{}g{}l{}s{:.4}r{}",
+            u8::from(self.trend),
+            u8::from(self.zones),
+            u8::from(self.grid),
+            u8::from(self.legend),
+            self.smooth_oct,
+            self.spl_range_db.unwrap_or(0.0),
+        )
+    }
+}
+
+/// Moving-average smoothing over a log-spaced frequency axis with a
+/// window `octaves` wide. NaN samples are skipped; NaN stays NaN.
+fn smooth_octaves(values: &[f64], points: usize, freq_min: f64, freq_max: f64, octaves: f64) -> Vec<f64> {
+    if octaves <= 0.0 || points < 3 || freq_min <= 0.0 || freq_max <= freq_min {
+        return values.to_vec();
+    }
+    #[expect(clippy::cast_precision_loss, reason = "point counts fit in f64")]
+    let points_per_octave = points as f64 / (freq_max / freq_min).log2();
+    #[expect(clippy::cast_possible_truncation, reason = "window size is small")]
+    #[expect(clippy::cast_sign_loss, reason = "window size is positive")]
+    let half = ((octaves * points_per_octave) / 2.0).round() as usize;
+    if half == 0 {
+        return values.to_vec();
+    }
+    let mut out = Vec::with_capacity(values.len());
+    for i in 0..values.len() {
+        if !values[i].is_finite() {
+            out.push(f64::NAN);
+            continue;
+        }
+        let lo = i.saturating_sub(half);
+        let hi = (i + half).min(values.len() - 1);
+        let (mut sum, mut count) = (0.0, 0_usize);
+        for v in &values[lo..=hi] {
+            if v.is_finite() {
+                sum += v;
+                count += 1;
+            }
+        }
+        #[expect(clippy::cast_precision_loss, reason = "window size fits in f64")]
+        out.push(if count > 0 { sum / count as f64 } else { f64::NAN });
+    }
+    out
+}
 
 /// Shared compare-render state: cache directory, render budget, and the
 /// one-render-at-a-time lock.
@@ -133,6 +238,16 @@ type CompareResult<T> = std::result::Result<T, CompareFailure>;
 
 fn fail<T>(status: u16, message: impl Into<String>) -> CompareResult<T> {
     Err(CompareFailure::new(status, message))
+}
+
+/// Trend/helper traces toggled by the `trend` option (old plot-config
+/// `trendNames`, matched loosely on the lower-cased name).
+fn is_trend_trace(lower_name: &str) -> bool {
+    lower_name.contains("band")
+        || lower_name.contains("midrange")
+        || lower_name.contains("linear interpolation")
+        || lower_name.contains("linear regression")
+        || lower_name.contains("regression")
 }
 
 /// One decoded bundle trace.
@@ -241,15 +356,23 @@ impl Bundle {
             .collect()
     }
 
-    fn visible_traces(&self) -> Vec<&Trace> {
-        // Drop recommended zones and slope helpers (Python rule).
+    fn visible_traces(&self, opts: &RenderOptions) -> Vec<&Trace> {
         self.traces
             .iter()
             .filter(|trace| {
                 let name = trace.name.to_lowercase();
-                !name.starts_with("recommended")
-                    && !name.ends_with(" slope")
-                    && !name.ends_with(" zone")
+                // Slope helpers are never drawn (Python rule).
+                if name.ends_with(" slope") {
+                    return false;
+                }
+                let is_zone = name.starts_with("recommended") || name.ends_with(" zone");
+                if is_zone && !opts.zones {
+                    return false;
+                }
+                if is_trend_trace(&name) && !opts.trend {
+                    return false;
+                }
+                true
             })
             .collect()
     }
@@ -654,15 +777,41 @@ pub(crate) fn serve(
         .map(|p| std::fs::read(p).unwrap_or_default())
         .collect();
 
+    let opts = RenderOptions::parse(query, false);
     let mut digest = Sha256::new();
-    digest.update(format!("{COMPARE_CACHE_VERSION}|{measurement}|{width}|").as_bytes());
+    digest.update(format!("{COMPARE_CACHE_VERSION}|{measurement}|{width}|{}|", opts.cache_key()).as_bytes());
     for bytes in &bundle_bytes {
         digest.update(bytes);
     }
     let cache_file = state
         .cache_dir
         .join(format!("{:x}.webp", digest.finalize()));
-    if let Ok(body) = std::fs::read(&cache_file)
+    cached_render(state, &cache_file, || {
+        let bundle_a = parse_bundle(std::str::from_utf8(&bundle_bytes[0])?)?;
+        let bundle_b = parse_bundle(std::str::from_utf8(&bundle_bytes[1])?)?;
+        let name_a = format!("{} ({})", sides[0].0, sides[0].1);
+        let name_b = format!("{} ({})", sides[1].0, sides[1].1);
+        let source_a = source_label(&sides[0].1, &sides[0].2);
+        let source_b = source_label(&sides[1].1, &sides[1].2);
+        render_bundles(
+            &[&bundle_a, &bundle_b],
+            &[name_a.as_str(), name_b.as_str()],
+            measurement,
+            width,
+            &[source_a.as_str(), source_b.as_str()],
+            &opts,
+        )
+    })
+}
+
+/// Cache lookup + one-render lock + budget + atomic cache write,
+/// shared by the compare and single-graph endpoints.
+fn cached_render(
+    state: &CompareState,
+    cache_file: &Path,
+    render: impl FnOnce() -> Result<Vec<u8>>,
+) -> CompareResult<ComparePicture> {
+    if let Ok(body) = std::fs::read(cache_file)
         && !body.is_empty()
     {
         return Ok(ComparePicture {
@@ -682,7 +831,7 @@ pub(crate) fn serve(
         return Err(failure);
     }
     // Re-check under the lock: another request may have rendered it.
-    if let Ok(body) = std::fs::read(&cache_file)
+    if let Ok(body) = std::fs::read(cache_file)
         && !body.is_empty()
     {
         return Ok(ComparePicture {
@@ -691,21 +840,7 @@ pub(crate) fn serve(
         });
     }
 
-    let render = (|| -> Result<Vec<u8>> {
-        let bundle_a = parse_bundle(std::str::from_utf8(&bundle_bytes[0])?)?;
-        let bundle_b = parse_bundle(std::str::from_utf8(&bundle_bytes[1])?)?;
-        render_compare(
-            &bundle_a,
-            &bundle_b,
-            &format!("{} ({})", sides[0].0, sides[0].1),
-            &format!("{} ({})", sides[1].0, sides[1].1),
-            measurement,
-            width,
-            &source_label(&sides[0].1, &sides[0].2),
-            &source_label(&sides[1].1, &sides[1].2),
-        )
-    })();
-    let body = match render {
+    let body = match render() {
         Ok(body) => body,
         Err(error) => return fail(500, format!("render failed: {error:#}")),
     };
@@ -714,11 +849,64 @@ pub(crate) fn serve(
     }
     let tmp = cache_file.with_extension("webp.tmp");
     if std::fs::write(&tmp, &body).is_ok() {
-        let _ = std::fs::rename(&tmp, &cache_file);
+        let _ = std::fs::rename(&tmp, cache_file);
     }
     Ok(ComparePicture {
         body,
         cache_hit: false,
+    })
+}
+
+/// Single-speaker dynamic graph (`/graph-render/graph.webp`): renders
+/// one measurement bundle with display options, cached like compare.
+pub(crate) fn serve_graph(
+    spin_files: &Path,
+    state: &CompareState,
+    query: &HashMap<String, String>,
+) -> CompareResult<ComparePicture> {
+    let measurement = query.get("measurement").map_or("", String::as_str);
+    if !ALLOWED_MEASUREMENTS.contains(&measurement) {
+        return fail(400, "measurement not allowed for graph rendering");
+    }
+    let width: u32 = query.get("w").map_or(1400, |w| w.parse().unwrap_or(0));
+    if !ALLOWED_WIDTHS.contains(&width) {
+        return fail(400, "width must be one of 900, 1400");
+    }
+    let param = |key: &str| query.get(key).map_or("", String::as_str);
+    let safe = |value: &str| {
+        !value.is_empty() && !value.contains('/') && !value.contains('\\') && !value.contains("..")
+    };
+    let (speaker, origin, version) = (param("speaker"), param("origin"), param("version"));
+    if !safe(speaker) || !safe(origin) || !safe(version) {
+        return fail(400, "invalid speaker, origin, or version");
+    }
+    let origin = origin.strip_prefix("Vendors-").unwrap_or(origin);
+    let Some(path) = crate::safe_path(
+        &spin_files.join(speaker).join(origin).join(version).join("traces"),
+        &[&format!("{measurement}.json")],
+    ) else {
+        return fail(400, "invalid speaker, origin, or version");
+    };
+    if !path.is_file() {
+        return fail(404, "graph data not available");
+    }
+    let bundle_bytes = std::fs::read(&path).unwrap_or_default();
+    let opts = RenderOptions::parse(query, true);
+    let mut digest = Sha256::new();
+    digest.update(format!("{COMPARE_CACHE_VERSION}|graph|{measurement}|{width}|{}|", opts.cache_key()).as_bytes());
+    digest.update(&bundle_bytes);
+    let cache_file = state
+        .cache_dir
+        .join("graph")
+        .join(format!("{:x}.webp", digest.finalize()));
+    let speaker = speaker.to_owned();
+    let origin = origin.to_owned();
+    let version = version.to_owned();
+    cached_render(state, &cache_file, || {
+        let bundle = parse_bundle(std::str::from_utf8(&bundle_bytes)?)?;
+        let name = format!("{speaker} ({origin})");
+        let source = source_label(&origin, &version);
+        render_bundles(&[&bundle], &[name.as_str()], measurement, width, &[source.as_str()], &opts)
     })
 }
 
@@ -794,38 +982,41 @@ fn watermark_text(source: &str) -> String {
     }
 }
 
-/// Renders the A/B overlay at `width`, then hardens it to WebP bytes.
-#[expect(
-    clippy::too_many_arguments,
-    reason = "mirrors the Python render_compare signature"
-)]
-fn render_compare(
-    bundle_a: &Bundle,
-    bundle_b: &Bundle,
-    name_a: &str,
-    name_b: &str,
+/// Renders one or two bundles (single graph, or A solid / B dashed
+/// overlay) at `width`, then hardens the result to WebP bytes.
+fn render_bundles(
+    bundles: &[&Bundle],
+    names: &[&str],
     graph_name: &str,
     width: u32,
-    source_a: &str,
-    source_b: &str,
+    sources: &[&str],
+    opts: &RenderOptions,
 ) -> Result<Vec<u8>> {
-    let bundles: [&Bundle; 2] = [bundle_a, bundle_b];
     let has_y2 = bundles
         .iter()
         .any(|b| b.traces.iter().any(|t| t.axis == "y2"));
-    let y_range = axis_range(&bundles, "y").unwrap_or((-40.0, 10.0));
+    let mut y_range = axis_range(bundles, "y").unwrap_or((-40.0, 10.0));
+    if let Some(span) = opts.spl_range_db {
+        y_range = (y_range.1 - span, y_range.1);
+    }
+    let y_range = y_range;
     let y2_range = if has_y2 {
-        axis_range(&bundles, "y2")
+        axis_range(bundles, "y2")
     } else {
         None
     };
     let n_traces = bundles
         .iter()
-        .map(|b| b.visible_traces().len())
+        .map(|b| b.visible_traces(opts).len())
         .max()
         .unwrap_or(0);
     #[expect(clippy::cast_precision_loss, reason = "trace counts fit in f64")]
-    let legend_rows = ((n_traces as f64 / 3.0).ceil() as u32).max(1) * 2 + 5;
+    #[expect(clippy::cast_possible_truncation, reason = "bundle count fits in u32")]
+    let legend_rows = if opts.legend {
+        ((n_traces as f64 / 3.0).ceil() as u32).max(1) * (bundles.len() as u32) + 5
+    } else {
+        1
+    };
     #[expect(clippy::cast_possible_truncation, reason = "height fits in u32")]
     #[expect(clippy::cast_sign_loss, reason = "height is positive")]
     let height = (f64::from(width) * 2.0 / 3.0) as u32 + legend_rows * 18;
@@ -865,11 +1056,16 @@ fn render_compare(
     let y_of =
         |value: f64, range: (f64, f64)| plot_y1 - (value - range.0) / (range.1 - range.0) * plot_h;
 
+    let title_text = if names.len() > 1 {
+        format!("{graph_name}: {} vs {}", names[0], names[1])
+    } else {
+        format!("{graph_name} for {}", names.first().copied().unwrap_or_default())
+    };
     if let Some(font) = &font {
         draw_text(
             &mut img,
             font,
-            &format!("{graph_name}: {name_a} vs {name_b}"),
+            &title_text,
             title_px,
             plot_x0,
             s(14.0) + f64::from(title_px),
@@ -881,7 +1077,9 @@ fn render_compare(
     ] {
         if freq_lo <= freq && freq <= freq_hi {
             let x = x_of(freq);
-            draw_segment(&mut img, (x, plot_y0), (x, plot_y1), GRID, f64::from(SS));
+            if opts.grid {
+                draw_segment(&mut img, (x, plot_y0), (x, plot_y1), GRID, f64::from(SS));
+            }
             if let Some(font) = &font {
                 let label = if freq >= 1_000.0 {
                     format!("{}k", (freq / 1_000.0) as i64)
@@ -902,7 +1100,9 @@ fn render_compare(
     }
     for tick in nice_ticks(y_range.0, y_range.1) {
         let y = y_of(tick, y_range);
-        draw_segment(&mut img, (plot_x0, y), (plot_x1, y), GRID, f64::from(SS));
+        if opts.grid {
+            draw_segment(&mut img, (plot_x0, y), (plot_x1, y), GRID, f64::from(SS));
+        }
         if let Some(font) = &font {
             draw_text(
                 &mut img,
@@ -955,16 +1155,23 @@ fn render_compare(
             continue;
         }
         let dashed = speaker_idx == 1;
-        for (trace_idx, trace) in bundle.visible_traces().iter().enumerate() {
+        for (trace_idx, trace) in bundle.visible_traces(&opts).iter().enumerate() {
             let range = if trace.axis == "y2" {
                 y2_range.unwrap_or(y_range)
             } else {
                 y_range
             };
             let color = parse_color(&trace.color, trace_idx);
+            let values = smooth_octaves(
+                &trace.values,
+                bundle.points,
+                bundle.freq_min,
+                bundle.freq_max,
+                opts.smooth_oct,
+            );
             let points: Vec<(f64, f64)> = freqs
                 .iter()
-                .zip(&trace.values)
+                .zip(&values)
                 .map(|(f, v)| {
                     if v.is_finite() {
                         (x_of(*f), y_of(*v, range))
@@ -977,10 +1184,10 @@ fn render_compare(
         }
     }
 
-    if let Some(font) = &font {
+    if opts.legend && let Some(font) = &font {
         let mut legend_y = plot_y1 + s(34.0);
         for (speaker_idx, bundle) in bundles.iter().enumerate() {
-            let name = [name_a, name_b][speaker_idx];
+            let name = names[speaker_idx];
             let label = if speaker_idx == 1 {
                 format!("{name} (dashed)")
             } else {
@@ -997,7 +1204,7 @@ fn render_compare(
             );
             legend_y += s(20.0);
             let mut x = plot_x0;
-            for (trace_idx, trace) in bundle.visible_traces().iter().enumerate() {
+            for (trace_idx, trace) in bundle.visible_traces(&opts).iter().enumerate() {
                 let color = parse_color(&trace.color, trace_idx);
                 draw_polyline(
                     &mut img,
@@ -1026,12 +1233,13 @@ fn render_compare(
     }
 
     let img = image::imageops::resize(&img, width, height, image::imageops::FilterType::Lanczos3);
-    let sources = [source_a, source_b]
-        .into_iter()
+    let sources = sources
+        .iter()
+        .copied()
         .filter(|s| !s.is_empty())
         .collect::<Vec<_>>()
         .join(" + ");
-    let seed = format!("compare/{graph_name}/{name_a}/{name_b}");
+    let seed = format!("graph/{graph_name}/{}", names.join("/"));
     harden(&img, &seed, &watermark_text(&sources), font.as_ref())
 }
 
@@ -1109,11 +1317,12 @@ mod tests {
     #[test]
     fn decode_values_maps_sentinel_to_nan() {
         let bundle = parse_bundle(&bundle_json(&[0, 100, SENTINEL], &[0, 0, 0])).expect("bundle");
+        let opts = RenderOptions::default();
         let values = &bundle.traces[0].values;
         assert_eq!(values[1], 1.0);
         assert!(values[2].is_nan());
         // Recommended zones are dropped from the overlay.
-        assert_eq!(bundle.visible_traces().len(), 1);
+        assert_eq!(bundle.visible_traces(&opts).len(), 1);
         assert_eq!(bundle.freqs().len(), 3);
     }
 
@@ -1123,15 +1332,13 @@ mod tests {
             parse_bundle(&bundle_json(&[0, -100, -200, -300], &[0, 0, 0, 0])).expect("bundle a");
         let bundle_b =
             parse_bundle(&bundle_json(&[-50, -150, -250, -350], &[0, 0, 0, 0])).expect("bundle b");
-        let body = render_compare(
-            &bundle_a,
-            &bundle_b,
-            "A (ASR)",
-            "B (ASR)",
+        let body = render_bundles(
+            &[&bundle_a, &bundle_b],
+            &["A (ASR)", "B (ASR)"],
             "CEA2034",
             900,
-            "Audio Science Review",
-            "Audio Science Review",
+            &["Audio Science Review", "Audio Science Review"],
+            &RenderOptions::default(),
         )
         .expect("render");
         assert_eq!(&body[..4], b"RIFF");
@@ -1176,6 +1383,49 @@ mod tests {
                 .map(|e| e.status),
             Some(400)
         );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn smooth_octaves_averages_and_keeps_nan() {
+        let values = [0.0, 10.0, 0.0, f64::NAN, 0.0, 10.0, 0.0];
+        let out = smooth_octaves(&values, 701, 20.0, 20_000.0, 1.0 / 48.0);
+        assert!(out[3].is_nan());
+        // The spikes are pulled toward their neighbours.
+        assert!(out[1] < 10.0 && out[1] > 0.0);
+        // Zero smoothing is the identity.
+        assert_eq!(smooth_octaves(&values, 701, 20.0, 20_000.0, 0.0)[1], 10.0);
+    }
+
+    #[test]
+    fn serve_graph_renders_and_caches_with_options() {
+        let root = std::env::temp_dir().join(format!("graph-test-{}", std::process::id()));
+        let traces = root.join("files/Spk A/ASR/asr/traces");
+        std::fs::create_dir_all(&traces).expect("mkdir");
+        let json = bundle_json(&[0, -100, -200, -300], &[0, 0, 0, 0]);
+        std::fs::write(traces.join("CEA2034.json"), &json).expect("write");
+        let state = CompareState::new(root.join("cache"));
+        let base: HashMap<String, String> = [
+            ("measurement", "CEA2034"),
+            ("speaker", "Spk A"),
+            ("origin", "ASR"),
+            ("version", "asr"),
+            ("w", "900"),
+        ]
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
+        let first = serve_graph(&root.join("files"), &state, &base).expect("render");
+        assert!(!first.cache_hit);
+        assert_eq!(&first.body[..4], b"RIFF");
+        let second = serve_graph(&root.join("files"), &state, &base).expect("cached");
+        assert!(second.cache_hit);
+        // Different options render a different picture.
+        let mut no_grid = base.clone();
+        no_grid.insert("grid".to_owned(), "0".to_owned());
+        let third = serve_graph(&root.join("files"), &state, &no_grid).expect("render no grid");
+        assert!(!third.cache_hit);
+        assert_ne!(third.body, first.body);
         let _ = std::fs::remove_dir_all(&root);
     }
 }

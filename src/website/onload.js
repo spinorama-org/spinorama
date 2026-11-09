@@ -40,16 +40,30 @@ window.onload = () => {
         });
     }
 
-    const banner = document.querySelector('.banner');
-    if (banner) {
-        banner.addEventListener('click', () => {
-            banner.classList.toggle('hidden');
-        });
+    // Banners: dismissing with the x hides them for one hour,
+    // stored in localStorage so it survives page navigation.
+    const BANNER_KEY = 'spinorama-banner-dismissed-at';
+    let bannerDismissed = false;
+    try {
+        const dismissedAt = parseInt(localStorage.getItem(BANNER_KEY) || '0', 10);
+        bannerDismissed = Number.isFinite(dismissedAt) && Date.now() - dismissedAt < 60 * 60 * 1000;
+    } catch {
+        bannerDismissed = false;
     }
-
-    document.querySelectorAll('.license-banner .delete').forEach((button) => {
-        button.addEventListener('click', () => {
-            button.closest('.license-banner').remove();
+    document.querySelectorAll('.license-banner, .banner').forEach((banner) => {
+        if (bannerDismissed) {
+            banner.remove();
+            return;
+        }
+        banner.querySelectorAll('.delete').forEach((button) => {
+            button.addEventListener('click', () => {
+                try {
+                    localStorage.setItem(BANNER_KEY, String(Date.now()));
+                } catch {
+                    // storage unavailable: dismissal lasts for this page only
+                }
+                document.querySelectorAll('.license-banner, .banner').forEach((b) => b.remove());
+            });
         });
     });
 

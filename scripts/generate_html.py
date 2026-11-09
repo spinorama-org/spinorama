@@ -98,6 +98,7 @@ WEBSITE_JS_FILES = (
     "download",
     "error",
     "eqs",
+    "graph_options",
     "index",
     "meta",
     "misc",

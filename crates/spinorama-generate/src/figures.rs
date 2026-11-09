@@ -447,29 +447,35 @@ pub fn regression_traces(
 }
 
 fn cea_traces(cea: &Cea2034) -> Vec<Trace> {
+    // DI curves share the colour of the curve they derive from
+    // (ERDI = Early Reflections, SPDI = Sound Power).
     vec![
-        Trace::new("On Axis", cea.on_axis.clone(), Axis::Primary),
+        Trace::new("On Axis", cea.on_axis.clone(), Axis::Primary).color("#1f77b4"),
         Trace::new(
             "Listening Window",
             cea.listening_window.clone(),
             Axis::Primary,
-        ),
+        )
+        .color("#ff7f0e"),
         Trace::new(
             "Early Reflections",
             cea.early_reflections.clone(),
             Axis::Primary,
-        ),
-        Trace::new("Sound Power", cea.sound_power.clone(), Axis::Primary),
+        )
+        .color("#2ca02c"),
+        Trace::new("Sound Power", cea.sound_power.clone(), Axis::Primary).color("#d62728"),
         Trace::new(
             "Early Reflections DI",
             cea.early_reflections_di.clone(),
             Axis::Secondary,
-        ),
+        )
+        .color("#2ca02c"),
         Trace::new(
             "Sound Power DI",
             cea.sound_power_di.clone(),
             Axis::Secondary,
-        ),
+        )
+        .color("#d62728"),
     ]
 }
 
