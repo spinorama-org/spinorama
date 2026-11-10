@@ -16,7 +16,7 @@ use anyhow::{Context, Result, bail};
 use mimalloc::MiMalloc;
 use spinorama_generate::compute::cea2034::{Cea2034, compute_spin_data};
 use spinorama_generate::figures::{
-    Axis, Figure, Trace, apply_scan_style, common_figures, spin_figures,
+    Axis, Figure, Trace, apply_black_marker_style, apply_scan_style, common_figures, spin_figures,
 };
 use spinorama_generate::filters::apo::parse_apo;
 use spinorama_generate::filters::biquad::apply_peq;
@@ -27,7 +27,9 @@ use spinorama_generate::meta::{
     measured_by_label, origin_dir_name, sanitize_filename, source_label,
 };
 use spinorama_generate::render::webp;
-use spinorama_generate::render::{DEFAULT_RENDER_IMAGES_BIN, render_pngs, write_figure};
+use spinorama_generate::render::{
+    DEFAULT_RENDER_IMAGES_BIN, render_pngs, write_figure, write_figure_with_bundle,
+};
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
@@ -209,14 +211,30 @@ fn sibling_eq_dir(dir: &Path) -> PathBuf {
     }
 }
 
-fn write_styled(args: &Args, dir: &Path, figure: &Figure) -> Result<(PathBuf, bool)> {
-    if args.scan_hard {
-        let mut styled = figure.clone();
-        apply_scan_style(&mut styled);
-        write_figure(dir, &styled)
-    } else {
-        write_figure(dir, figure)
+/// Writes one figure, styling speaker-view scatter JSON to black
+/// curves with per-measurement markers (contour, radar, and other
+/// kinds keep their colours; `--scan-hard` adds the dense grid).
+///
+/// Trace bundles always come from the pristine figure: they are the
+/// numeric comparison contract. Headphone and EQ filter-analysis
+/// figures pass `speaker_view: false` and keep their colours except
+/// under `--scan-hard`.
+fn write_styled(
+    args: &Args,
+    dir: &Path,
+    figure: &Figure,
+    speaker_view: bool,
+) -> Result<(PathBuf, bool)> {
+    if !speaker_view && !args.scan_hard {
+        return write_figure(dir, figure);
     }
+    let mut styled = figure.clone();
+    if args.scan_hard {
+        apply_scan_style(&mut styled);
+    } else {
+        apply_black_marker_style(&mut styled);
+    }
+    write_figure_with_bundle(dir, &styled, figure)
 }
 
 fn maybe_webp(
@@ -386,7 +404,7 @@ fn run_headphone(args: &Args, freq: &[f64], spl: &[f64], started: Instant) -> Re
         // Content-compared writes: an existing file is only skipped
         // when the serialized payload is identical, so generator
         // changes reach disk without needing --force.
-        let (written, changed) = write_styled(args, &out_dir, figure)?;
+        let (written, changed) = write_styled(args, &out_dir, figure, false)?;
         wrote_any |= changed;
         if changed {
             println!("wrote {}", written.display());
@@ -574,7 +592,7 @@ fn run_one(args: &Args) -> Result<()> {
     let mut wrote_any = false;
     for figure in &figures {
         // Content-compared writes, as in the headphone path above.
-        let (written, changed) = write_styled(args, &out_dir, figure)?;
+        let (written, changed) = write_styled(args, &out_dir, figure, true)?;
         wrote_any |= changed;
         if changed {
             println!("wrote {}", written.display());
@@ -650,7 +668,7 @@ fn run_one(args: &Args) -> Result<()> {
                     if !args.force && target.is_file() {
                         continue;
                     }
-                    write_styled(args, &origin_private, figure)?;
+                    write_styled(args, &origin_private, figure, false)?;
                     wrote_filters = true;
                 }
                 println!(
@@ -686,7 +704,7 @@ fn run_one(args: &Args) -> Result<()> {
                     .unwrap_or_else(|| out_dir.clone());
                 let mut wrote_eq = false;
                 for figure in &eq_figures {
-                    let (written, changed) = write_styled(args, &eq_dir, figure)?;
+                    let (written, changed) = write_styled(args, &eq_dir, figure, true)?;
                     wrote_eq |= changed;
                     if changed {
                         println!("wrote {}", written.display());

@@ -1,8 +1,12 @@
 //! `GET /compare.webp`: two-speaker overlay pictures, rendered on the fly.
 //!
 //! Rust replacement for the Python `scripts/compare_render_server.py` +
-//! `spinorama/compare_render.py` pair. The overlay (speaker A solid,
-//! speaker B dashed) is drawn from the pristine trace bundles under
+//! `spinorama/compare_render.py` pair. The overlay uses one colour per
+//! speaker (A solid, B dashed) and one marker shape per measurement —
+//! the same shape for both speakers — so curves cannot be separated
+//! by colour for digitising; the single-speaker variant draws every
+//! curve in black with the same markers. Pictures are drawn from the
+//! pristine trace bundles under
 //! `<spin_files>/<speaker>/<origin>/<version>/traces/<measurement>.json`,
 //! hardened (seeded texture + diagonal watermark + lossy WebP) so the
 //! underlying data is never served, and cached on disk by content hash:
@@ -26,7 +30,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 /// Cache namespace; bump when the rendered picture changes shape.
-pub(crate) const COMPARE_CACHE_VERSION: &str = "compare-v4-rust";
+pub(crate) const COMPARE_CACHE_VERSION: &str = "compare-v5-speaker-colors-markers";
 
 /// Measurements the comparison view may overlay (Python whitelist).
 pub(crate) const ALLOWED_MEASUREMENTS: [&str; 14] = [
@@ -58,11 +62,15 @@ const SS: u32 = 2;
 /// Bundle value marking "no data" in the int16 payloads.
 const SENTINEL: i16 = -32768;
 
-/// Trace colours when a bundle trace carries none (Python palette).
-const FALLBACK_COLORS: [&str; 10] = [
-    "#5c77a5", "#dc842a", "#c85857", "#89b5b1", "#71a152", "#bab0ac", "#e15759", "#b07aa1",
-    "#76b7b2", "#ff9da7",
-];
+/// The two comparison colours: one per speaker (A, then B), taken
+/// from the site palette so overlays stay in the house colours.
+const SPEAKER_COLORS: [Rgb<u8>; 2] = [Rgb([0x5c, 0x77, 0xa5]), Rgb([0xdc, 0x84, 0x2a])];
+
+/// Curve colour of the single-speaker graph: black for every curve.
+const SINGLE_COLOR: Rgb<u8> = Rgb([0, 0, 0]);
+
+/// Colour of `N/A` valid-range zones (grey, like the static graphs).
+const ZONE_COLOR: Rgb<u8> = Rgb([204, 204, 204]);
 
 const GRID: Rgb<u8> = Rgb([205, 205, 205]);
 const TEXT: Rgb<u8> = Rgb([35, 35, 35]);
@@ -248,13 +256,136 @@ fn is_trend_trace(lower_name: &str) -> bool {
         || lower_name.contains("linear interpolation")
         || lower_name.contains("linear regression")
         || lower_name.contains("regression")
+        || lower_name.contains("trend")
 }
 
-/// One decoded bundle trace.
+/// Whether a trace is drawn without markers: trend/band helpers,
+/// confidence zones, slope helpers, and `N/A` valid-range zones.
+fn is_helper_trace(name: &str) -> bool {
+    let lower = name.to_lowercase();
+    lower == "n/a"
+        || lower == "zero"
+        || lower.starts_with("recommended")
+        || lower.ends_with(" zone")
+        || lower.ends_with(" slope")
+        || is_trend_trace(&lower)
+}
+
+/// Marker shape distinguishing measurement curves that share one
+/// colour. The order of [`MARKERS`] mirrors `SCAN_SYMBOLS` in
+/// `spinorama-generate` (the static speaker-graph style), including
+/// the hash fallback for unknown names; keep the two in sync.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Marker {
+    Circle,
+    Square,
+    Diamond,
+    Cross,
+    X,
+    TriangleUp,
+    TriangleDown,
+    TriangleLeft,
+    TriangleRight,
+    Star,
+}
+
+const MARKERS: [Marker; 10] = [
+    Marker::Circle,
+    Marker::Square,
+    Marker::Diamond,
+    Marker::Cross,
+    Marker::X,
+    Marker::TriangleUp,
+    Marker::TriangleDown,
+    Marker::TriangleLeft,
+    Marker::TriangleRight,
+    Marker::Star,
+];
+
+/// Canonical marker per measurement name (mirror of `MARKER_BY_NAME`
+/// in `spinorama-generate`; keep in sync). Keyed by name, not trace
+/// position, so one measurement carries the same shape for both
+/// speakers. Mirror angles share a shape.
+const MARKER_BY_NAME: &[(&str, Marker)] = &[
+    ("On Axis", Marker::Circle),
+    ("ON", Marker::Circle),
+    ("Listening Window", Marker::Square),
+    ("Early Reflections", Marker::Diamond),
+    ("Sound Power", Marker::TriangleUp),
+    ("Early Reflections DI", Marker::Cross),
+    ("Sound Power DI", Marker::X),
+    ("Estimated In-Room Response", Marker::Star),
+    ("Group Delay (ms)", Marker::Circle),
+    ("10°", Marker::Square),
+    ("-10°", Marker::Square),
+    ("20°", Marker::Diamond),
+    ("-20°", Marker::Diamond),
+    ("30°", Marker::TriangleUp),
+    ("-30°", Marker::TriangleUp),
+    ("40°", Marker::TriangleDown),
+    ("-40°", Marker::TriangleDown),
+    ("50°", Marker::Cross),
+    ("-50°", Marker::Cross),
+    ("60°", Marker::X),
+    ("-60°", Marker::X),
+    ("70°", Marker::Star),
+    ("-70°", Marker::Star),
+    ("80°", Marker::TriangleLeft),
+    ("-80°", Marker::TriangleLeft),
+    ("90°", Marker::TriangleRight),
+    ("-90°", Marker::TriangleRight),
+    ("Ceiling Bounce", Marker::Square),
+    ("Floor Bounce", Marker::Diamond),
+    ("Front Wall Bounce", Marker::TriangleUp),
+    ("Rear Wall Bounce", Marker::TriangleDown),
+    ("Side Wall Bounce", Marker::Cross),
+    ("Total Early Reflection", Marker::Star),
+    ("Ceiling Reflection", Marker::Square),
+    ("Floor Reflection", Marker::Diamond),
+    ("Front", Marker::Square),
+    ("Rear", Marker::Diamond),
+    ("Side", Marker::TriangleUp),
+    ("Total Horizontal Reflection", Marker::Star),
+    ("Total Vertical Reflection", Marker::Star),
+    ("+6dB", Marker::Circle),
+    ("-6dB", Marker::Square),
+];
+
+/// Marker for a measurement name, `None` for helper traces. Unknown
+/// names fall back to a stable hash (djb2, as in `spinorama-generate`).
+fn marker_for(name: &str) -> Option<Marker> {
+    if is_helper_trace(name) {
+        return None;
+    }
+    if let Some((_, marker)) = MARKER_BY_NAME.iter().find(|(key, _)| *key == name) {
+        return Some(*marker);
+    }
+    let mut hash: u32 = 5381;
+    for byte in name.bytes() {
+        hash = hash.wrapping_mul(33).wrapping_add(u32::from(byte));
+    }
+    Some(MARKERS[(hash as usize) % MARKERS.len()])
+}
+
+/// Colour of one trace: black for a single speaker, one colour per
+/// speaker in a comparison, grey for `N/A` zones. The bundle's own
+/// per-measurement colours are deliberately ignored.
+fn trace_color(trace_name: &str, speaker_idx: usize, speaker_count: usize) -> Rgb<u8> {
+    if trace_name.eq_ignore_ascii_case("N/A") {
+        return ZONE_COLOR;
+    }
+    if speaker_count >= 2 {
+        SPEAKER_COLORS[speaker_idx % SPEAKER_COLORS.len()]
+    } else {
+        SINGLE_COLOR
+    }
+}
+
+/// One decoded bundle trace. The bundle's per-trace `color` is
+/// ignored on purpose: rendering colours by speaker, not measurement.
 struct Trace {
     name: String,
     axis: String,
-    color: String,
     values: Vec<f64>,
 }
 
@@ -315,11 +446,6 @@ fn parse_bundle(text: &str) -> Result<Bundle> {
                         .get("axis")
                         .and_then(Value::as_str)
                         .unwrap_or("y")
-                        .to_owned(),
-                    color: trace
-                        .get("color")
-                        .and_then(Value::as_str)
-                        .unwrap_or_default()
                         .to_owned(),
                     values: decode_values(trace),
                 })
@@ -412,36 +538,6 @@ fn axis_range(bundles: &[&Bundle], axis: &str) -> Option<(f64, f64)> {
     let hi = values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     let pad = ((hi - lo) * 0.08).max(1.0);
     Some((lo - pad, hi + pad))
-}
-
-fn parse_color(text: &str, fallback_idx: usize) -> Rgb<u8> {
-    let text = text.trim();
-    if text.len() == 7
-        && text.starts_with('#')
-        && let (Ok(r), Ok(g), Ok(b)) = (
-            u8::from_str_radix(&text[1..3], 16),
-            u8::from_str_radix(&text[3..5], 16),
-            u8::from_str_radix(&text[5..7], 16),
-        )
-    {
-        return Rgb([r, g, b]);
-    }
-    if let Some(inner) = text.strip_prefix("rgb(").and_then(|t| t.strip_suffix(')')) {
-        let parts: Vec<f64> = inner
-            .split(',')
-            .filter_map(|p| p.trim().parse().ok())
-            .collect();
-        if parts.len() == 3 {
-            #[expect(
-                clippy::cast_possible_truncation,
-                reason = "colour channels clamp to u8"
-            )]
-            #[expect(clippy::cast_sign_loss, reason = "colour channels clamp to u8")]
-            let ch = |v: f64| v.round().clamp(0.0, 255.0) as u8;
-            return Rgb([ch(parts[0]), ch(parts[1]), ch(parts[2])]);
-        }
-    }
-    parse_color(FALLBACK_COLORS[fallback_idx % FALLBACK_COLORS.len()], 0)
 }
 
 /// Formats a tick like Python's `%g` (no trailing zeros).
@@ -946,6 +1042,152 @@ fn draw_segment(img: &mut RgbImage, a: (f64, f64), b: (f64, f64), color: Rgb<u8>
     }
 }
 
+/// Fills a convex-or-star polygon scanline by scanline.
+fn fill_polygon(img: &mut RgbImage, verts: &[(f64, f64)], color: Rgb<u8>) {
+    if verts.len() < 3 {
+        return;
+    }
+    let y_lo = verts
+        .iter()
+        .map(|v| v.1)
+        .fold(f64::INFINITY, f64::min)
+        .ceil();
+    let y_hi = verts
+        .iter()
+        .map(|v| v.1)
+        .fold(f64::NEG_INFINITY, f64::max)
+        .floor();
+    let mut y = y_lo;
+    while y <= y_hi {
+        let mut xs: Vec<f64> = Vec::new();
+        for i in 0..verts.len() {
+            let (x0, y0) = verts[i];
+            let (x1, y1) = verts[(i + 1) % verts.len()];
+            if (y0 <= y && y < y1) || (y1 <= y && y < y0) {
+                xs.push(x0 + (y - y0) / (y1 - y0) * (x1 - x0));
+            }
+        }
+        xs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        for pair in xs.chunks(2) {
+            if pair.len() == 2 {
+                draw_segment(img, (pair[0], y), (pair[1], y), color, 1.6);
+            }
+        }
+        y += 1.0;
+    }
+}
+
+/// Draws one marker of half-size `r` centred at (`x`, `y`).
+fn draw_marker(img: &mut RgbImage, x: f64, y: f64, r: f64, marker: Marker, color: Rgb<u8>) {
+    match marker {
+        Marker::Circle => stamp(img, x, y, r, color),
+        Marker::Square => fill_polygon(
+            img,
+            &[
+                (x - r, y - r),
+                (x + r, y - r),
+                (x + r, y + r),
+                (x - r, y + r),
+            ],
+            color,
+        ),
+        Marker::Diamond => fill_polygon(
+            img,
+            &[(x, y - r * 1.25), (x + r, y), (x, y + r * 1.25), (x - r, y)],
+            color,
+        ),
+        Marker::TriangleUp => fill_polygon(
+            img,
+            &[
+                (x, y - r * 1.15),
+                (x + r * 1.1, y + r * 0.9),
+                (x - r * 1.1, y + r * 0.9),
+            ],
+            color,
+        ),
+        Marker::TriangleDown => fill_polygon(
+            img,
+            &[
+                (x, y + r * 1.15),
+                (x - r * 1.1, y - r * 0.9),
+                (x + r * 1.1, y - r * 0.9),
+            ],
+            color,
+        ),
+        Marker::TriangleLeft => fill_polygon(
+            img,
+            &[
+                (x - r * 1.15, y),
+                (x + r * 0.9, y - r * 1.1),
+                (x + r * 0.9, y + r * 1.1),
+            ],
+            color,
+        ),
+        Marker::TriangleRight => fill_polygon(
+            img,
+            &[
+                (x + r * 1.15, y),
+                (x - r * 0.9, y + r * 1.1),
+                (x - r * 0.9, y - r * 1.1),
+            ],
+            color,
+        ),
+        Marker::Star => {
+            let mut verts: Vec<(f64, f64)> = Vec::with_capacity(10);
+            for i in 0..10 {
+                let angle =
+                    -std::f64::consts::FRAC_PI_2 + f64::from(i) * std::f64::consts::PI / 5.0;
+                let radius = if i % 2 == 0 { r * 1.3 } else { r * 0.55 };
+                verts.push((x + angle.cos() * radius, y + angle.sin() * radius));
+            }
+            fill_polygon(img, &verts, color);
+        }
+        Marker::Cross => {
+            let w = 2.4 * f64::from(SS);
+            draw_segment(img, (x - r, y), (x + r, y), color, w);
+            draw_segment(img, (x, y - r), (x, y + r), color, w);
+        }
+        Marker::X => {
+            let w = 2.4 * f64::from(SS);
+            let d = r * 0.85;
+            draw_segment(img, (x - d, y - d), (x + d, y + d), color, w);
+            draw_segment(img, (x - d, y + d), (x + d, y - d), color, w);
+        }
+    }
+}
+
+/// Stamps markers along one curve, roughly evenly spaced in screen
+/// space and clipped to the plot rectangle. The dense bundle grid
+/// (1024 points) would merge into a solid band if every point got a
+/// marker, so placement is by travelled distance.
+fn draw_markers(
+    img: &mut RgbImage,
+    points: &[(f64, f64)],
+    marker: Marker,
+    color: Rgb<u8>,
+    plot: (f64, f64, f64, f64),
+) {
+    let spacing = 30.0 * f64::from(SS);
+    let radius = 4.5 * f64::from(SS);
+    let (x0, y0, x1, y1) = plot;
+    let mut last: Option<(f64, f64)> = None;
+    for &point in points {
+        if !(point.0.is_finite() && point.1.is_finite()) {
+            continue;
+        }
+        if point.0 < x0 || point.0 > x1 || point.1 < y0 || point.1 > y1 {
+            continue;
+        }
+        let due = last.is_none_or(|prev| {
+            ((point.0 - prev.0).powi(2) + (point.1 - prev.1).powi(2)).sqrt() >= spacing
+        });
+        if due {
+            draw_marker(img, point.0, point.1, radius, marker, color);
+            last = Some(point);
+        }
+    }
+}
+
 /// Display name of a measurement source (Python `source_label` table,
 /// common cases; unknown vendors fall back to the vendor name).
 fn source_label(origin: &str, version: &str) -> String {
@@ -1155,13 +1397,16 @@ fn render_bundles(
             continue;
         }
         let dashed = speaker_idx == 1;
-        for (trace_idx, trace) in bundle.visible_traces(&opts).iter().enumerate() {
+        for trace in bundle.visible_traces(opts) {
             let range = if trace.axis == "y2" {
                 y2_range.unwrap_or(y_range)
             } else {
                 y_range
             };
-            let color = parse_color(&trace.color, trace_idx);
+            // One colour per speaker (black when alone); the curve
+            // identity comes from its marker shape, shared across
+            // speakers for the same measurement.
+            let color = trace_color(&trace.name, speaker_idx, bundles.len());
             let values = smooth_octaves(
                 &trace.values,
                 bundle.points,
@@ -1181,6 +1426,15 @@ fn render_bundles(
                 })
                 .collect();
             draw_polyline(&mut img, &points, color, dashed, 2.0 * f64::from(SS));
+            if let Some(marker) = marker_for(&trace.name) {
+                draw_markers(
+                    &mut img,
+                    &points,
+                    marker,
+                    color,
+                    (plot_x0, plot_y0, plot_x1, plot_y1),
+                );
+            }
         }
     }
 
@@ -1204,8 +1458,8 @@ fn render_bundles(
             );
             legend_y += s(20.0);
             let mut x = plot_x0;
-            for (trace_idx, trace) in bundle.visible_traces(&opts).iter().enumerate() {
-                let color = parse_color(&trace.color, trace_idx);
+            for (trace_idx, trace) in bundle.visible_traces(opts).iter().enumerate() {
+                let color = trace_color(&trace.name, speaker_idx, bundles.len());
                 draw_polyline(
                     &mut img,
                     &[(x, legend_y + s(7.0)), (x + s(26.0), legend_y + s(7.0))],
@@ -1213,6 +1467,16 @@ fn render_bundles(
                     speaker_idx == 1,
                     2.0 * f64::from(SS),
                 );
+                if let Some(marker) = marker_for(&trace.name) {
+                    draw_marker(
+                        &mut img,
+                        x + s(13.0),
+                        legend_y + s(7.0),
+                        4.5 * f64::from(SS),
+                        marker,
+                        color,
+                    );
+                }
                 draw_text(
                     &mut img,
                     font,
@@ -1384,6 +1648,114 @@ mod tests {
             Some(400)
         );
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn markers_are_shared_per_measurement_and_helpers_have_none() {
+        // Same measurement, same shape for both speakers, keyed by name.
+        assert_eq!(marker_for("On Axis"), Some(Marker::Circle));
+        assert_eq!(marker_for("ON"), marker_for("On Axis"));
+        assert_eq!(marker_for("Listening Window"), Some(Marker::Square));
+        assert_ne!(marker_for("On Axis"), marker_for("Listening Window"));
+        assert_eq!(marker_for("30°"), marker_for("-30°"));
+        assert_eq!(marker_for("Band ±3dB"), None);
+        assert_eq!(marker_for("recommended LW zone"), None);
+        assert_eq!(marker_for("On Axis slope"), None);
+        assert_eq!(marker_for("N/A"), None);
+        // Unknown measurements are stable across calls.
+        assert_eq!(marker_for("Custom Curve"), marker_for("Custom Curve"));
+        assert!(marker_for("Custom Curve").is_some());
+    }
+
+    #[test]
+    fn trace_colors_are_black_single_and_one_per_speaker_compared() {
+        assert_eq!(trace_color("On Axis", 0, 1), Rgb([0, 0, 0]));
+        assert_eq!(trace_color("Listening Window", 0, 1), Rgb([0, 0, 0]));
+        assert_eq!(trace_color("On Axis", 0, 2), SPEAKER_COLORS[0]);
+        assert_eq!(trace_color("On Axis", 1, 2), SPEAKER_COLORS[1]);
+        // Every measurement of one speaker shares that speaker's colour.
+        assert_eq!(trace_color("Sound Power", 1, 2), SPEAKER_COLORS[1]);
+        assert_eq!(trace_color("N/A", 0, 2), ZONE_COLOR);
+    }
+
+    #[test]
+    fn rendered_pictures_use_speaker_colors_not_bundle_colors() {
+        // Chromatic predicates, not raw distance: grey axes/text sit
+        // within a loose distance of the blue, but have no chroma.
+        // Hardening (texture + lossy WebP) only shifts channels a bit.
+        fn count_where(body: &[u8], pred: impl Fn(u8, u8, u8) -> bool) -> usize {
+            let img = image::load_from_memory(body)
+                .expect("decode webp")
+                .to_rgb8();
+            img.pixels().filter(|p| pred(p[0], p[1], p[2])).count()
+        }
+        let is_a_blue = |r: u8, g: u8, b: u8| b > r.saturating_add(35) && b > g.saturating_add(12);
+        let is_b_orange = |r: u8, g: u8, b: u8| {
+            r > b.saturating_add(80) && r > g.saturating_add(40) && g > b.saturating_add(25)
+        };
+        let is_pure_red =
+            |r: u8, g: u8, b: u8| r > g.saturating_add(120) && r > b.saturating_add(120) && g < 70;
+        let is_black = |r: u8, g: u8, b: u8| r < 45 && g < 45 && b < 45;
+        // Bundle traces claim pure red; rendering must ignore that.
+        let bundle_a =
+            parse_bundle(&bundle_json(&[0, -100, -200, -300], &[0, 0, 0, 0])).expect("bundle a");
+        let bundle_b =
+            parse_bundle(&bundle_json(&[-50, -150, -250, -350], &[0, 0, 0, 0])).expect("bundle b");
+        let compared = render_bundles(
+            &[&bundle_a, &bundle_b],
+            &["A (ASR)", "B (ASR)"],
+            "CEA2034",
+            900,
+            &["", ""],
+            &RenderOptions::default(),
+        )
+        .expect("compare render");
+        assert!(count_where(&compared, is_a_blue) > 40, "speaker A colour");
+        assert!(count_where(&compared, is_b_orange) > 40, "speaker B colour");
+        assert_eq!(
+            count_where(&compared, is_pure_red),
+            0,
+            "bundle colour leaked"
+        );
+
+        let single = render_bundles(
+            &[&bundle_a],
+            &["A (ASR)"],
+            "CEA2034",
+            900,
+            &[""],
+            &RenderOptions::default(),
+        )
+        .expect("single render");
+        assert!(count_where(&single, is_black) > 40, "black curves");
+        // The single view uses no speaker colours at all.
+        assert_eq!(count_where(&single, is_a_blue), 0, "speaker colour leaked");
+        assert_eq!(
+            count_where(&single, is_b_orange),
+            0,
+            "speaker colour leaked"
+        );
+        assert_eq!(count_where(&single, is_pure_red), 0, "bundle colour leaked");
+    }
+
+    #[test]
+    fn marker_shapes_draw_distinct_glyphs() {
+        // Square fills its corner; diamond and triangle-up do not.
+        let probe = |marker: Marker| {
+            let mut img = RgbImage::from_pixel(41, 41, Rgb([255, 255, 255]));
+            draw_marker(&mut img, 20.0, 20.0, 10.0, marker, Rgb([0, 0, 0]));
+            (
+                *img.get_pixel(11, 11),
+                *img.get_pixel(20, 20),
+                *img.get_pixel(20, 9),
+            )
+        };
+        let (square_corner, square_centre, _) = probe(Marker::Square);
+        let (diamond_corner, _, diamond_top) = probe(Marker::Diamond);
+        assert_eq!(square_corner, Rgb([0, 0, 0]));
+        assert_eq!(square_centre, Rgb([0, 0, 0]));
+        assert_eq!(diamond_corner, Rgb([255, 255, 255]));
+        assert_eq!(diamond_top, Rgb([0, 0, 0]));
     }
 
     #[test]

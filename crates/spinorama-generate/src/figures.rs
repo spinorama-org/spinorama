@@ -284,7 +284,12 @@ impl Figure {
     }
 }
 
-/// Marker symbols cycled across traces by the scan-hardening style.
+/// Marker symbols used to distinguish curves that share one colour.
+///
+/// The names are Plotly `marker.symbol` values; every one maps to a
+/// distinct shape in the GPUI renderer (`x` renders as a wye there).
+/// Keep this order: unknown trace names pick by stable name hash, and
+/// the comparison renderer in `spinorama-api` mirrors the list.
 pub const SCAN_SYMBOLS: &[&str] = &[
     "circle",
     "square",
@@ -298,29 +303,136 @@ pub const SCAN_SYMBOLS: &[&str] = &[
     "star",
 ];
 
-/// Applies the anti-scan test style to a scatter figure: every curve
-/// in the same grey as the grid, distinguished by a different marker
-/// symbol, plus a dense grid (every 1 dB, minor log ticks on the
-/// frequency axis). Filled zones (bands, N/A) stay filled, in grey.
-pub fn apply_scan_style(figure: &mut Figure) {
+/// Canonical marker symbol per measurement name.
+///
+/// Keyed by name, not by trace position, so the same measurement
+/// carries the same symbol on every speaker and in every view
+/// (single speaker, A/B comparison). Mirror angles share a symbol.
+/// Mirrored by the comparison renderer in `spinorama-api`; keep the
+/// two tables in sync.
+const MARKER_BY_NAME: &[(&str, &str)] = &[
+    // CEA2034 and derived views (`ON` is the SPL-plane short name).
+    ("On Axis", "circle"),
+    ("ON", "circle"),
+    ("Listening Window", "square"),
+    ("Early Reflections", "diamond"),
+    ("Sound Power", "triangle-up"),
+    ("Early Reflections DI", "cross"),
+    ("Sound Power DI", "x"),
+    ("Estimated In-Room Response", "star"),
+    ("Group Delay (ms)", "circle"),
+    // SPL by angle.
+    ("10°", "square"),
+    ("-10°", "square"),
+    ("20°", "diamond"),
+    ("-20°", "diamond"),
+    ("30°", "triangle-up"),
+    ("-30°", "triangle-up"),
+    ("40°", "triangle-down"),
+    ("-40°", "triangle-down"),
+    ("50°", "cross"),
+    ("-50°", "cross"),
+    ("60°", "x"),
+    ("-60°", "x"),
+    ("70°", "star"),
+    ("-70°", "star"),
+    ("80°", "triangle-left"),
+    ("-80°", "triangle-left"),
+    ("90°", "triangle-right"),
+    ("-90°", "triangle-right"),
+    // Reflections.
+    ("Ceiling Bounce", "square"),
+    ("Floor Bounce", "diamond"),
+    ("Front Wall Bounce", "triangle-up"),
+    ("Rear Wall Bounce", "triangle-down"),
+    ("Side Wall Bounce", "cross"),
+    ("Total Early Reflection", "star"),
+    ("Ceiling Reflection", "square"),
+    ("Floor Reflection", "diamond"),
+    ("Front", "square"),
+    ("Rear", "diamond"),
+    ("Side", "triangle-up"),
+    ("Total Horizontal Reflection", "star"),
+    ("Total Vertical Reflection", "star"),
+    // -6 dB directivity crossings.
+    ("+6dB", "circle"),
+    ("-6dB", "square"),
+];
+
+/// Whether a trace name denotes a helper overlay (trend line, band,
+/// confidence zone, slope, N/A zone) rather than a measurement.
+///
+/// Helpers keep their line style and never get markers: only
+/// measurement curves are distinguished by symbol.
+#[must_use]
+pub fn is_helper_trace_name(name: &str) -> bool {
+    let lower = name.to_lowercase();
+    lower == "n/a"
+        || lower == "zero"
+        || lower.starts_with("recommended")
+        || lower.ends_with(" zone")
+        || lower.ends_with(" slope")
+        || lower.contains("band")
+        || lower.contains("midrange")
+        || lower.contains("linear interpolation")
+        || lower.contains("regression")
+        || lower.contains("trend")
+}
+
+/// Marker symbol for a measurement name, `None` for helper traces.
+///
+/// Unknown measurement names fall back to a stable hash of the name,
+/// so the choice is identical across speakers, views, and processes.
+#[must_use]
+pub fn marker_symbol_for(name: &str) -> Option<&'static str> {
+    if is_helper_trace_name(name) {
+        return None;
+    }
+    if let Some((_, symbol)) = MARKER_BY_NAME.iter().find(|(key, _)| *key == name) {
+        return Some(symbol);
+    }
+    // djb2: any stable hash works; mirrors the comparison renderer.
+    let mut hash: u32 = 5381;
+    for byte in name.bytes() {
+        hash = hash.wrapping_mul(33).wrapping_add(u32::from(byte));
+    }
+    Some(SCAN_SYMBOLS[(hash as usize) % SCAN_SYMBOLS.len()])
+}
+
+/// Applies the speaker-view style to a scatter figure: every
+/// measurement curve in black, distinguished by its per-measurement
+/// marker symbol, so curves cannot be separated (and digitised) by
+/// colour. Helper lines stay black without markers; filled zones
+/// (bands, N/A) stay filled, in light grey. Contour, surface, radar,
+/// bar, and subplot figures are untouched and keep their colours.
+pub fn apply_black_marker_style(figure: &mut Figure) {
     if !matches!(figure.kind, FigureKind::Scatter) {
         return;
     }
-    let mut symbol_index = 0usize;
     for trace in &mut figure.traces {
         if trace.fill.is_some() {
             trace.color = Some("#CCCCCC".to_owned());
             continue;
         }
-        trace.color = Some("#7F7F7F".to_owned());
-        if trace.mode.as_deref() != Some("none") {
-            let symbol = SCAN_SYMBOLS[symbol_index % SCAN_SYMBOLS.len()];
-            symbol_index += 1;
+        trace.color = Some("#000000".to_owned());
+        if trace.mode.as_deref() != Some("none")
+            && let Some(symbol) = marker_symbol_for(&trace.name)
+        {
             trace.mode = Some("lines+markers".to_owned());
             trace.marker_symbol = Some(symbol.to_owned());
             trace.marker_size = Some(7.0);
         }
     }
+}
+
+/// Applies the scan-hardening style to a scatter figure: the black
+/// speaker-view curves with markers, plus a dense grid (every 1 dB,
+/// minor log ticks on the frequency axis).
+pub fn apply_scan_style(figure: &mut Figure) {
+    if !matches!(figure.kind, FigureKind::Scatter) {
+        return;
+    }
+    apply_black_marker_style(figure);
     let mut x_tickvals = Vec::new();
     for decade in [10.0, 100.0, 1000.0, 10000.0] {
         for m in 1..=9 {

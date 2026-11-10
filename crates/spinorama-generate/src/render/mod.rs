@@ -109,14 +109,36 @@ pub fn renderer_spec(bin: &Path) -> Result<String> {
 /// Returns an error when the directories cannot be created or a payload
 /// cannot be encoded or written.
 pub fn write_figure(dir: &Path, figure: &Figure) -> Result<(PathBuf, bool)> {
+    write_figure_with_bundle(dir, figure, figure)
+}
+
+/// Writes the Plotly JSON from `figure` and the trace bundle from
+/// `bundle_figure`.
+///
+/// Display styling (black curves with markers) applies to the JSON
+/// the GPUI renderer rasterises; trace bundles are the pristine
+/// numeric comparison contract and keep the unstyled traces, so the
+/// comparison renderer stays free to colour by speaker.
+///
+/// # Errors
+///
+/// Returns an error when the directories cannot be created or a payload
+/// cannot be encoded or written.
+pub fn write_figure_with_bundle(
+    dir: &Path,
+    figure: &Figure,
+    bundle_figure: &Figure,
+) -> Result<(PathBuf, bool)> {
     std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
     let json_path = dir.join(format!("{}.json", figure.name));
     let mut changed = write_if_changed(&json_path, &plotly_json::to_json_string(figure)?)?;
-    if figure.kind == FigureKind::Scatter {
+    if bundle_figure.kind == FigureKind::Scatter {
         std::fs::create_dir_all(dir.join("traces"))
             .with_context(|| format!("creating {}", dir.display()))?;
-        let bundle_path = dir.join("traces").join(format!("{}.json", figure.name));
-        changed |= write_if_changed(&bundle_path, &trace_bundle::to_json_string(figure)?)?;
+        let bundle_path = dir
+            .join("traces")
+            .join(format!("{}.json", bundle_figure.name));
+        changed |= write_if_changed(&bundle_path, &trace_bundle::to_json_string(bundle_figure)?)?;
     }
     Ok((json_path, changed))
 }
