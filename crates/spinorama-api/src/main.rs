@@ -34,6 +34,13 @@ use serde_json::{Map, Value};
 
 const SOFTWARE_VERSION: &str = "v1.0";
 
+/// Private API data root used when `SPINORAMA_API_FILES` is unset.
+///
+/// Measurement graphs, trace bundles, metadata and headphone CSVs
+/// live outside every nginx document root; only this binary (and the
+/// image renderers pointed at the same tree) reads them.
+const DEFAULT_API_FILES: &str = "/home/spin/spinorama-data/api";
+
 const KNOWN_MEASUREMENTS: &[&str] = &[
     "CEA2034",
     "On Axis",
@@ -303,9 +310,7 @@ fn env_path(name: &str, default: impl Fn() -> PathBuf) -> PathBuf {
 }
 
 fn load_state() -> Result<State> {
-    let api_files = env_path("SPINORAMA_API_FILES", || {
-        PathBuf::from("/var/www/html/spinorama-api")
-    });
+    let api_files = env_path("SPINORAMA_API_FILES", || PathBuf::from(DEFAULT_API_FILES));
     let spin_files = env_path("SPINORAMA_SPINFILES", || api_files.join("speakers"));
     let metadata_path = api_files.join("assets/metadata.json");
     if !metadata_path.is_file() {
@@ -1422,6 +1427,15 @@ mod tests {
         let mut sorted = first.clone();
         sorted.sort();
         assert_eq!(first, sorted, "demo listing is sorted");
+    }
+
+    #[test]
+    fn default_api_files_stay_outside_nginx_roots() {
+        assert_eq!(DEFAULT_API_FILES, "/home/spin/spinorama-data/api");
+        assert!(
+            !Path::new(DEFAULT_API_FILES).starts_with("/var/www"),
+            "private measurement data must not live in a web root"
+        );
     }
 
     #[test]

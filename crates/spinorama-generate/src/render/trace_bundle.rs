@@ -135,7 +135,7 @@ pub fn to_json_string(figure: &Figure) -> Result<String> {
         "y_min": y_min,
         "y_max": y_max,
         "y_range": [-45.0, 5.0],
-        "y2_range": [-10.0, 40.0],
+        "y2_range": figure.secondary_axis.as_ref().map_or([-10.0, 40.0], |axis| axis.range),
         "traces": traces,
     }))?)
 }

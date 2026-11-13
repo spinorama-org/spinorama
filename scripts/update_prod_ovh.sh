@@ -41,6 +41,8 @@ else
     echo "OK checking for dev site in prod"
 fi
 
+python3 ./scripts/check_public_dist.py ./dist || exit 1
+
 # copy
 echo "Sync starts:"
 for target in "$TARGET"; do

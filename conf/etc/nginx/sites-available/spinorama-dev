@@ -16,8 +16,10 @@ server {
         root /var/www/html/spinorama-dev;
 	autoindex off;
 	index index.html;
-	expires modified +1s;
-	add_header Cache-Control no-cache;
+	expires off;
+	add_header Cache-Control "no-store" always;
 
+	# These regex locations must precede the shared image-cache location.
+	include /etc/nginx/snippets/spinorama-dev-cache.conf;
 	include /etc/nginx/snippets/bot-protection-server.conf;
 }

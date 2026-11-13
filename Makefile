@@ -7,6 +7,15 @@ MATURIN ?= $(CURDIR)/.venv/bin/maturin
 CARGO ?= cargo
 NPM ?= npm
 WASM_PACK ?= wasm-pack
+GPUI_TOOLKIT_DIR ?= $(abspath $(CURDIR)/../../gpui-toolkit)
+RENDER_TARGET_DIR ?= $(GPUI_TOOLKIT_DIR)/target
+RENDER_IMAGES_BIN ?= $(RENDER_TARGET_DIR)/release/spinorama-render-images
+GENERATE_GRAPH_BIN ?= $(abspath $(or $(CARGO_TARGET_DIR),$(CURDIR)/target))/release/generate-graph
+METADATA_DIR ?= datas/measurements
+MEASUREMENTS_ROOT ?= datas/measurements
+JOBS ?= 1
+VERSION ?=
+DEPLOY_DEV_URL ?= https://dev.spinorama.org
 
 ANNOTATIONS_MANIFEST := src/spinorama/annotations_rust/Cargo.toml
 GENERATE_MANIFEST := crates/spinorama-generate/Cargo.toml
@@ -18,17 +27,24 @@ WASM_DIST_DIR := $(CURDIR)/dist/js/annotations-rust
 DEV_HOST ?= 127.0.0.1
 DEV_PORT ?= 8888
 DEV_URL ?= http://localhost:$(DEV_PORT)
-SPEAKER ?= RCF KX 32-A
-PYTHONPATH := .:./src:./src/spinorama:./src/website:./scripts
+SPEAKER ?=
+export PYTHONPATH := .:./src:./src/spinorama:./src/website:./scripts
 PYTHON_LINT_PATHS ?= src scripts tests
 
 .PHONY: help setup install-js rust rust-build rust-python rust-check rust-fmt \
-	rust-clippy wasm build build-dev build-dev-full rebuild serve dev run \
-	test test-rust test-python test-js test-annotations lint lint-python \
-	lint-python-strict check annotations clean
+	rust-clippy wasm build build-dev build-dev-full build-dev-site rebuild serve dev run \
+	test test-rust test-python test-js test-dev test-annotations test-annotations-rust lint lint-python \
+	lint-python-strict check annotations clean generate-check generate-fmt generate-clippy \
+	generate-test generate-build renderer-build graphs images check-meta check-meta-files check-public-dist \
+	workspace-check workspace-fmt workspace-clippy workspace-test workspace-build \
+	api-check api-fmt api-clippy api-test api-build deploy-dev deploy-nginx-dev \
+	deploy-binaries-dev deploy-binaries-prod deploy-binaries-all stage-api-prod
+
+GRAPH_SELECTION = $(if $(strip $(SPEAKER)),--speaker "$(SPEAKER)") $(if $(strip $(VERSION)),--mversion "$(VERSION)")
 
 help: ## Show available targets and configurable variables.
-	@awk 'BEGIN {FS = ":.*## "; printf "Usage: make <target> [VARIABLE=value]\n\nTargets:\n"} /^[a-zA-Z0-9_.-]+:.*## / {printf "  %-18s %s\n", $$1, $$2} END {printf "\nExamples:\n  make dev\n  make annotations SPEAKER=\"RCF KX 32-A\"\n  make test-annotations\n"}' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*## "; printf "Usage: make <target> [VARIABLE=value]\n\nTargets:\n"} /^[a-zA-Z0-9_.-]+:.*## / {printf "  %-18s %s\n", $$1, $$2} END {printf "\nExamples:\n  make dev\n  make images SPEAKER=\"Topping MA4\"\n  make test-annotations\n"}' $(MAKEFILE_LIST)
+	@printf '\nImage generation: SPEAKER and VERSION filter the catalogue; omit them for all measurements.\n  GPUI_TOOLKIT_DIR=%s\n  JOBS=%s\nDeployment: make deploy-dev | deploy-nginx-dev | deploy-binaries-dev\n' "$(GPUI_TOOLKIT_DIR)" "$(JOBS)"
 
 setup: ## Install project dependencies and compile native extensions.
 	./scripts/setup.sh
@@ -36,12 +52,12 @@ setup: ## Install project dependencies and compile native extensions.
 install-js: ## Install JavaScript dependencies from the lockfile.
 	$(NPM) ci
 
-rust: rust-python ## Rebuild Rust and install the Maturin Python extension.
+rust: workspace-build ## Build the release Rust workspace binaries.
 
-rust-build: ## Build a release Python wheel with Maturin.
+rust-build: ## Build the optional Python annotation wheel with Maturin.
 	$(MATURIN) build --release --manifest-path $(ANNOTATIONS_MANIFEST)
 
-rust-python: ## Rebuild and install the annotation solver into the project venv.
+rust-python: ## Build and install the optional Python annotation extension with Maturin.
 	$(MATURIN) develop --release --manifest-path $(ANNOTATIONS_MANIFEST)
 
 rust-check: ## Type-check the native Rust annotation solver.
@@ -80,8 +96,26 @@ workspace-test: ## Run all Rust workspace tests.
 workspace-build: ## Build all release binaries of the Rust workspace.
 	$(CARGO) build --release --manifest-path $(WORKSPACE_MANIFEST) --workspace
 
-generate-build: ## Build the release generate-graph, generate-peq, generate-meta, generate-radar, generate-eq-compare, generate-headphone-meta, generate-headphone-graph and generate-peq-headphone binaries.
-	$(CARGO) build --release --manifest-path $(WORKSPACE_MANIFEST) -p spinorama-generate --bin generate-graph --bin generate-peq --bin generate-meta --bin generate-radar --bin generate-eq-compare --bin generate-headphone-meta --bin generate-headphone-graph --bin generate-peq-headphone
+generate-build: ## Build every release graph/metadata/EQ generator binary.
+	$(CARGO) build --release --manifest-path $(WORKSPACE_MANIFEST) -p spinorama-generate --bins
+
+renderer-build: ## Build the macOS release GPUI image renderer from GPUI_TOOLKIT_DIR.
+	CARGO_TARGET_DIR="$(RENDER_TARGET_DIR)" $(CARGO) build --release --manifest-path "$(GPUI_TOOLKIT_DIR)/Cargo.toml" -p gpui-spinorama --bin spinorama-render-images --features capture-bench
+
+graphs: generate-build ## Generate private graph payloads; optional SPEAKER and VERSION filters.
+	"$(GENERATE_GRAPH_BIN)" --metadata-dir "$(METADATA_DIR)" --measurements-root "$(MEASUREMENTS_ROOT)" $(GRAPH_SELECTION) --jobs "$(JOBS)"
+
+images: generate-build renderer-build ## Rebuild both binaries and regenerate PNG/WebP; optional SPEAKER and VERSION.
+	"$(GENERATE_GRAPH_BIN)" --metadata-dir "$(METADATA_DIR)" --measurements-root "$(MEASUREMENTS_ROOT)" $(GRAPH_SELECTION) --jobs "$(JOBS)" --render-images-bin "$(RENDER_IMAGES_BIN)" --render-png --render-webp --force
+
+check-meta: generate-build ## Validate speaker metadata with the Rust generator.
+	"$(GENERATE_GRAPH_BIN)" --metadata-dir "$(METADATA_DIR)" --check-meta
+
+check-meta-files: generate-build ## Validate metadata and load measurement files; optional SPEAKER and VERSION filters.
+	"$(GENERATE_GRAPH_BIN)" --metadata-dir "$(METADATA_DIR)" --check-meta --check-files $(GRAPH_SELECTION)
+
+check-public-dist: ## Reject private graph data in the public website tree.
+	$(PYTHON) scripts/check_public_dist.py dist
 
 api-check: ## Type-check the Rust API server crate.
 	$(CARGO) check --manifest-path crates/spinorama-api/Cargo.toml
@@ -98,7 +132,7 @@ api-test: ## Run Rust API server tests.
 api-build: ## Build the release spinorama-api binary.
 	$(CARGO) build --release --manifest-path $(WORKSPACE_MANIFEST) -p spinorama-api
 
-wasm: ## Force a release WASM rebuild and copy browser assets into dist.
+wasm: ## Build the optional legacy annotation WASM package.
 	$(WASM_PACK) build $(ANNOTATIONS_CRATE) --target web --release --out-dir $(WASM_BUILD_DIR)
 	mkdir -p $(WASM_DIST_DIR)
 	cp $(WASM_BUILD_DIR)/annotations_rust.js $(WASM_DIST_DIR)/annotations_rust.js
@@ -113,7 +147,30 @@ build-dev: ## Build fast local assets and reuse existing speaker pages.
 build-dev-full: ## Build the complete local website, including speaker pages.
 	$(PYTHON) scripts/generate_html.py --dev --sitedev=$(DEV_URL)
 
-rebuild: rust wasm build-dev ## Rebuild native Rust, WASM, and local website assets.
+build-dev-site: ## Build optimized assets for dev.spinorama.org deployment.
+	$(PYTHON) scripts/generate_html.py --dev --optim --sitedev=$(DEPLOY_DEV_URL)
+
+rebuild: rust images ## Rebuild Rust binaries, renderer, graph images, and the complete local site.
+	$(MAKE) build-dev-full
+
+# update_dev.sh installs the dev nginx configuration before uploading assets.
+deploy-dev: build-dev-site ## Build and deploy the dev website and its nginx policy (validates public files).
+	sh scripts/update_dev.sh
+
+deploy-nginx-dev: ## Install and validate only the dev nginx configuration.
+	sh scripts/deploy_nginx_dev.sh
+
+deploy-binaries-dev: ## Build remotely and deploy Rust binaries to dev (excludes the GPUI renderer).
+	sh scripts/deploy_binaries.sh dev
+
+deploy-binaries-prod: ## Build remotely and deploy Rust binaries to production (excludes the GPUI renderer).
+	sh scripts/deploy_binaries.sh prod
+
+deploy-binaries-all: ## Build remotely and deploy Rust binaries to dev and production.
+	sh scripts/deploy_binaries.sh all
+
+stage-api-prod: ## Stage private API data and nginx files on production; prints installation commands.
+	bash scripts/update_api_ovh.sh
 
 serve: ## Serve dist with CORS and disabled caching on DEV_HOST:DEV_PORT.
 	@test -d dist || { echo "dist is missing; run 'make build-dev' first"; exit 1; }
@@ -126,7 +183,9 @@ run: dev ## Alias for the local build-and-run workflow.
 
 test: test-rust test-python test-js ## Run Rust, Python, and frontend test suites.
 
-test-rust: ## Run Rust annotation solver unit tests.
+test-rust: workspace-test test-annotations-rust ## Run workspace and annotation-solver Rust tests.
+
+test-annotations-rust: ## Run Rust annotation solver unit tests.
 	$(CARGO) test --manifest-path $(ANNOTATIONS_MANIFEST)
 
 test-python: ## Run the complete Python test suite.
@@ -135,7 +194,10 @@ test-python: ## Run the complete Python test suite.
 test-js: ## Run the frontend Vitest suite once.
 	$(NPM) test -- --run
 
-test-annotations: test-rust ## Run focused native and Python annotation tests.
+test-dev: ## Run Vitest browser checks against dev; override SPINORAMA_TEST_URL for another site.
+	$(NPM) run test:dev
+
+test-annotations: test-annotations-rust ## Run focused native and Python annotation tests.
 	PYTHONPATH=$(PYTHONPATH) $(PYTHON) -m unittest tests.test_spin_plot_annotations
 	$(NPM) test -- --run src/website/annotation-layout.test.js
 
@@ -145,12 +207,13 @@ lint-python: ## Run CI-critical Ruff checks over Python source and tests.
 lint-python-strict: ## Run every Ruff rule configured in pyproject.toml.
 	$(PYTHON) -m ruff check $(PYTHON_LINT_PATHS)
 
-lint: rust-fmt rust-clippy lint-python ## Run Rust, Python, and JavaScript lint checks.
+lint: workspace-fmt workspace-clippy rust-fmt rust-clippy lint-python ## Run Rust, Python, and JavaScript lint checks.
 	$(NPM) run lint
 
-check: lint test-annotations ## Run focused annotation QA.
+check: lint test ## Run workspace, annotation, Python, and frontend checks.
 
-annotations: rust-python ## Render one annotated CEA-2034 plot (set SPEAKER=...).
+annotations: rust-python ## Render one annotated CEA-2034 plot (requires SPEAKER=...).
+	@test -n "$(SPEAKER)" || { echo 'Set SPEAKER="speaker name"'; exit 1; }
 	$(PYTHON) scripts/plot_cea2034_annotations.py "$(SPEAKER)" --force
 
 clean: ## Run the repository cleanup script.

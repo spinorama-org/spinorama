@@ -48,6 +48,9 @@ if [ $command -ne 0 ]; then
 else
     echo "OK checking for dev site in prod"
 fi
+python3 ./scripts/check_public_dist.py ./dist || exit 1
+# Install and validate the dev cache policy before uploading site assets.
+sh "$(dirname "$0")/deploy_nginx_dev.sh" || exit 1
 # copy
 echo "Sync"
 rsync -arvz --delete ./dist/* "$TARGET"

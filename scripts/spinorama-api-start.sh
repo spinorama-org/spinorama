@@ -8,9 +8,12 @@ set -eu
 
 DIR=${SPINORAMA_API_DIR:-/home/spin/run/spin-api}
 # Supervisor does not set $HOME, so default from the service home.
-BIN=${SPINORAMA_API_BIN:-${HOME:-/home/spin}/spinorama-bin/spinorama-api}
+SERVICE_HOME=${HOME:-/home/spin}
+BIN=${SPINORAMA_API_BIN:-$SERVICE_HOME/spinorama-bin/spinorama-api}
+# Private data read by this binary only; never below an nginx root.
+DATA_DIR=${SPINORAMA_DATA_DIR:-$SERVICE_HOME/spinorama-data/api}
 
-export SPINORAMA_API_FILES="${SPINORAMA_API_FILES:-/var/www/html/spinorama-api}"
+export SPINORAMA_API_FILES="${SPINORAMA_API_FILES:-$DATA_DIR}"
 export SPINORAMA_SPINFILES="${SPINORAMA_SPINFILES:-$SPINORAMA_API_FILES/speakers}"
 export SPINORAMA_API_KEY_DB="${SPINORAMA_API_KEY_DB:-$DIR/accounts/keys.sqlite3}"
 export SPINORAMA_ORIGINS_TOML="${SPINORAMA_ORIGINS_TOML:-$DIR/datas/origins.toml}"

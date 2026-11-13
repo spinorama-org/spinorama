@@ -8,7 +8,7 @@ User=spin
 Group=spin
 WorkingDirectory=/home/spin/run/spin-api
 Environment="PYTHONPATH=/home/spin/run/spin-api/src:/home/spin/run/spin-api"
-Environment="SPINORAMA_PRIVATE_SPEAKERS_ROOT=/var/www/html/spinorama-api/speakers"
+Environment="SPINORAMA_PRIVATE_SPEAKERS_ROOT=/home/spin/spinorama-data/api/speakers"
 Environment="SPINORAMA_COMPARE_CACHE=/var/cache/spinorama/compare"
 Environment="SPINORAMA_COMPARE_HOST=127.0.0.1"
 Environment="SPINORAMA_COMPARE_PORT=8765"

@@ -40,6 +40,7 @@ struct Args {
     metadata_json: Option<PathBuf>,
     metadata_dir: Option<PathBuf>,
     check_meta: bool,
+    check_files: bool,
     measurements_root: PathBuf,
     limit: Option<usize>,
     format: String,
@@ -55,6 +56,7 @@ struct Args {
     targets_dir: PathBuf,
     eq_dir: PathBuf,
     with_eq: bool,
+    write_filter_figures: bool,
     render_png: bool,
     render_webp: bool,
     scan_hard: bool,
@@ -75,6 +77,7 @@ fn parse_args() -> Result<Args> {
         metadata_json: None,
         metadata_dir: None,
         check_meta: false,
+        check_files: false,
         measurements_root: PathBuf::from("datas/measurements"),
         limit: None,
         format: "klippel".to_owned(),
@@ -90,6 +93,7 @@ fn parse_args() -> Result<Args> {
         targets_dir: PathBuf::from("datas/measurements/_support/headphone_targets"),
         eq_dir: PathBuf::from("datas/eq"),
         with_eq: true,
+        write_filter_figures: true,
         render_png: false,
         render_webp: false,
         scan_hard: false,
@@ -113,6 +117,7 @@ fn parse_args() -> Result<Args> {
             "--metadata-json" => args.metadata_json = Some(PathBuf::from(value(&mut it)?)),
             "--metadata-dir" => args.metadata_dir = Some(PathBuf::from(value(&mut it)?)),
             "--check-meta" => args.check_meta = true,
+            "--check-files" => args.check_files = true,
             "--measurements-root" => {
                 args.measurements_root = PathBuf::from(value(&mut it)?);
             }
@@ -171,12 +176,15 @@ fn parse_args() -> Result<Args> {
                      or:    generate-graph (--metadata-dir DIR | --metadata-json FILE) [--measurements-root DIR] \
                      [--speaker NAME] [--mversion VER] [--limit N] [--jobs N] [--data-dir DIR] [--force] \
                      [--render-png [--png-dir DIR] [--render-images-bin BIN]]\n\
-                     or:    generate-graph --metadata-dir DIR --check-meta"
+                     or:    generate-graph --metadata-dir DIR --check-meta [--check-files] [--speaker NAME] [--mversion VER]"
                 );
                 std::process::exit(0);
             }
             other => bail!("unknown argument: {other} (try --help)"),
         }
+    }
+    if args.check_files && !args.check_meta {
+        bail!("--check-files requires --check-meta");
     }
     if args.metadata_json.is_none() && args.metadata_dir.is_none() {
         if args.speaker_dir.as_os_str().is_empty() || args.speaker.is_empty() {
@@ -434,23 +442,36 @@ fn run_headphone(args: &Args, freq: &[f64], spl: &[f64], started: Instant) -> Re
     Ok(())
 }
 
-fn dir_has_files(dir: &Path, extension: &str) -> bool {
-    std::fs::read_dir(dir).is_ok_and(|mut entries| {
-        entries.any(|entry| {
-            entry.is_ok_and(|e| e.path().extension().is_some_and(|ext| ext == extension))
-        })
-    })
+fn outputs_complete(payload_dir: &Path, output_dir: &Path, extension: &str) -> bool {
+    let Ok(entries) = std::fs::read_dir(payload_dir) else {
+        return false;
+    };
+    let mut count = 0;
+    for entry in entries {
+        let Ok(entry) = entry else {
+            return false;
+        };
+        if entry.path().extension().is_some_and(|ext| ext == "json") {
+            count += 1;
+            let target = output_dir.join(entry.file_name()).with_extension(extension);
+            if !target
+                .metadata()
+                .is_ok_and(|meta| meta.is_file() && meta.len() > 0)
+            {
+                return false;
+            }
+        }
+    }
+    count > 0
 }
 
 /// Renders PNGs and converts WebP only when something is stale.
 ///
 /// A rerun whose figure JSONs were unchanged, whose renderer binary
 /// is unchanged (see `renderer_spec`), and whose PNG/WebP outputs
-/// already exist does no rendering work, which keeps the batch mode
-/// of `update_website.sh` incremental. Tests inject an explicit
-/// renderer binary (`--render-images-bin` / `SPINORAMA_RENDER_IMAGES`),
-/// identified by path, and share output roots, so the stamp only
-/// gates the default renderer.
+/// are complete does no rendering work, which keeps the batch mode
+/// of `update_website.sh` incremental. Explicit renderer paths are
+/// fingerprinted too, so shared Cargo target directories stay fresh.
 fn render_if_stale(
     args: &Args,
     json_dir: &Path,
@@ -468,11 +489,9 @@ fn render_if_stale(
     // re-render every directory, and a shared stamp written by an
     // early variant would mask the ones processed after it.
     let spec = renderer_spec(&args.render_images_bin)?;
-    let is_default_bin =
-        args.render_images_bin == Path::new(spinorama_generate::render::DEFAULT_RENDER_IMAGES_BIN);
-    let renderer_changed = is_default_bin && !renderer_current(png_dir, &spec);
-    let pngs_exist = dir_has_files(png_dir, "png");
-    let webps_exist = !args.render_webp || dir_has_files(&webp_dir, "webp");
+    let renderer_changed = !renderer_current(png_dir, &spec);
+    let pngs_exist = outputs_complete(json_dir, png_dir, "png");
+    let webps_exist = !args.render_webp || outputs_complete(json_dir, &webp_dir, "webp");
     if args.force || wrote_any || renderer_changed || !pngs_exist {
         render_pngs(&args.render_images_bin, json_dir, png_dir)?;
         println!("rendered PNGs under {}", png_dir.display());
@@ -569,7 +588,7 @@ fn run_one(args: &Args) -> Result<()> {
                 sensitivity_db,
                 valid_range,
                 Some(eq_source),
-                None,
+                Some(data.cea),
             )
         }
         LoadedMeasurement::Cea(cea) => {
@@ -644,14 +663,16 @@ fn run_one(args: &Args) -> Result<()> {
             } else {
                 Vec::new()
             };
-            // EQ filter figures (AutoEQ parity: filters_eq, EA overlays,
-            // histograms and the combined sheet). CEA 2034 only; HV-only
-            // speakers skip them like Python does. The frontend loads
+            // EQ filter figures use either loaded CEA curves or the CEA
+            // computed from horizontal/vertical measurements. The frontend loads
             // filters_*.webp from the origin directory (next to the
             // speaker page), not from the <version>_eq appendix, so the
-            // JSON/PNG/WebP for this family go to the origin dirs.
+            // WebP files go to the origin directory; intermediate inputs
+            // and PNGs are isolated under its filters subdirectory.
             let mut filter_figures = Vec::new();
-            if let Some(cea) = &eq_cea {
+            if args.write_filter_figures
+                && let Some(cea) = &eq_cea
+            {
                 let cea_eq = corrected_cea(cea, &peq);
                 filter_figures = spinorama_generate::figures::eq_filter_figures(
                     cea,
@@ -661,15 +682,13 @@ fn run_one(args: &Args) -> Result<()> {
                 );
             }
             if !filter_figures.is_empty() {
-                let origin_private = out_dir.parent().unwrap_or(&out_dir).to_path_buf();
+                // Keep renderer inputs and intermediate PNGs separate from
+                // measurement directories: both render/conversion tools recurse.
+                let origin_private = out_dir.parent().unwrap_or(&out_dir).join("filters");
                 let mut wrote_filters = false;
                 for figure in &filter_figures {
-                    let target = origin_private.join(format!("{}.json", figure.name));
-                    if !args.force && target.is_file() {
-                        continue;
-                    }
-                    write_styled(args, &origin_private, figure, false)?;
-                    wrote_filters = true;
+                    let (_, changed) = write_styled(args, &origin_private, figure, false)?;
+                    wrote_filters |= changed;
                 }
                 println!(
                     "{} EQ filter figures from {}",
@@ -677,11 +696,10 @@ fn run_one(args: &Args) -> Result<()> {
                     eq_file.display()
                 );
                 if args.render_png {
-                    // Per-measurement PNG/WebP dirs end in <version>; the
-                    // filters family lives one level up, in the origin dir.
+                    // Public filters live one level above <version>.
                     let png_origin = match &args.png_dir {
-                        Some(dir) => dir.parent().map_or_else(|| dir.clone(), Path::to_path_buf),
-                        None => args.data_dir.join("dist-gpui/speakers"),
+                        Some(dir) => dir.parent().unwrap_or(dir).join("filters"),
+                        None => args.data_dir.join("dist-gpui/speakers/filters"),
                     };
                     let webp_origin = args
                         .webp_dir
@@ -819,13 +837,28 @@ fn run_batch(args: &Args) -> Result<()> {
     // Filter first so --limit caps the work list deterministically
     // (catalogue order), then run measurements in parallel: each one
     // loads, computes, and writes only its own speaker/version
-    // directories, so no output is shared between workers.
+    // directories. Origin-level filter assets have one owner below.
     let selected: Vec<_> = entries
         .iter()
         .filter(|entry| args.speaker.is_empty() || args.speaker == entry.speaker)
         .filter(|entry| args.version.is_empty() || args.version == entry.version)
         .take(args.limit.unwrap_or(usize::MAX))
         .collect();
+    // Each origin owns one shared filters_* family. Prefer the default
+    // measurement, then the latest version, so workers never race on it.
+    let mut filter_owners = std::collections::BTreeMap::new();
+    for entry in &selected {
+        let key = (entry.speaker.clone(), origin_dir_name(&entry.origin));
+        let candidate = (entry.is_default, entry.version.clone());
+        filter_owners
+            .entry(key)
+            .and_modify(|owner| {
+                if candidate > *owner {
+                    *owner = candidate.clone();
+                }
+            })
+            .or_insert(candidate);
+    }
     // num_threads(0) lets rayon pick one worker per CPU core.
     let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(args.jobs)
@@ -855,6 +888,9 @@ fn run_batch(args: &Args) -> Result<()> {
             one.min_valid_freq = entry.min_valid_freq;
             one.max_valid_freq = entry.max_valid_freq;
             one.measured_by = None;
+            one.write_filter_figures = filter_owners
+                .get(&(speaker_name.clone(), origin_dir_name(&entry.origin)))
+                .is_some_and(|owner| owner.1 == entry.version);
             // Renderer output is flat stems; give each measurement its own
             // PNG/WebP directory in site layout so batch runs cannot
             // overwrite another speaker's pictures.
@@ -919,7 +955,51 @@ fn run_check_meta(args: &Args) -> Result<()> {
         .metadata_dir
         .as_deref()
         .ok_or_else(|| anyhow::anyhow!("--check-meta needs --metadata-dir"))?;
-    let report = spinorama_generate::metadata::check_metadata(dir)?;
+    let mut report = spinorama_generate::metadata::check_metadata(dir)?;
+    if args.check_files && report.errors.is_empty() {
+        let entries = catalogue_entries(args)?;
+        let mut checked = 0;
+        for entry in entries
+            .iter()
+            .filter(|entry| args.speaker.is_empty() || args.speaker == entry.speaker)
+            .filter(|entry| args.version.is_empty() || args.version == entry.version)
+            .take(args.limit.unwrap_or(usize::MAX))
+        {
+            checked += 1;
+            let loaded = load_measurement(&entry.format, &entry.speaker_dir, &entry.speaker)
+                .and_then(|data| {
+                    let has_samples = match &data {
+                        LoadedMeasurement::Hv(hv) => {
+                            hv.horizontal.freq.len() >= 2
+                                && hv.vertical.freq.len() >= 2
+                                && !hv.horizontal.columns.is_empty()
+                                && !hv.vertical.columns.is_empty()
+                        }
+                        LoadedMeasurement::Cea(cea) => cea.freq.len() >= 2,
+                        LoadedMeasurement::Curve { freq, spl } => {
+                            freq.len() >= 2 && freq.len() == spl.len()
+                        }
+                    };
+                    if has_samples {
+                        Ok(())
+                    } else {
+                        bail!("measurement contains no usable samples")
+                    }
+                });
+            if let Err(error) = loaded {
+                report.errors.push(format!(
+                    "{}/{}: measurement could not be loaded: {error:#}",
+                    entry.speaker, entry.version
+                ));
+            }
+        }
+        if checked == 0 && (!args.speaker.is_empty() || !args.version.is_empty()) {
+            report
+                .errors
+                .push("no measurements matched the requested speaker/version".to_owned());
+        }
+        println!("measurement-check: {checked} measurement(s) loaded or attempted");
+    }
     for warning in &report.warnings {
         println!("warning: {warning}");
     }

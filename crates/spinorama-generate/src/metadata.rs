@@ -502,6 +502,42 @@ pub fn check_metadata(root: &Path) -> Result<CheckReport> {
     };
     report.speakers = speakers.len();
     for (name, speaker) in &speakers {
+        if speaker.brand.is_empty() {
+            report.errors.push(format!("{name}: brand is empty"));
+        } else if !name.starts_with(&speaker.brand) {
+            report.errors.push(format!(
+                "{name}: name does not start with brand '{}'",
+                speaker.brand
+            ));
+        }
+        if speaker.model.is_empty() {
+            report.errors.push(format!("{name}: model is empty"));
+        } else if !name.ends_with(&speaker.model) {
+            report.errors.push(format!(
+                "{name}: name does not end with model '{}'",
+                speaker.model
+            ));
+        }
+        if speaker.brand.ends_with(' ') {
+            report
+                .warnings
+                .push(format!("{name}: trailing space in brand"));
+        }
+        if speaker.model.starts_with(' ') {
+            report
+                .warnings
+                .push(format!("{name}: leading space in model"));
+        }
+        if speaker.model.split(' ').next() == Some(speaker.brand.as_str()) {
+            report
+                .warnings
+                .push(format!("{name}: model starts with brand"));
+        }
+        if speaker.measurements.is_empty() {
+            report
+                .errors
+                .push(format!("{name}: at least one measurement is required"));
+        }
         if !speaker
             .measurements
             .contains_key(&speaker.default_measurement)

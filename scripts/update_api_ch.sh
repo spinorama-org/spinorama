@@ -16,6 +16,13 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+# Retired Python-era updater: its inputs (src/api, gunicorn_start.sh,
+# dist/assets) no longer exist, and it copied API data below nginx's
+# /var/www tree. Use update_api_ovh.sh, which stages private data
+# outside every nginx root for the Rust binaries.
+echo "KO: update_api_ch.sh is retired; use update_api_ovh.sh" >&2
+exit 2
+
 echo "Update starts"
 export PYTHONPATH=src:src/website:src/spinorama:scripts:.
 

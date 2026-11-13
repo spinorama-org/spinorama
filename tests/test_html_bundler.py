@@ -77,12 +77,10 @@ class JSImportTests(unittest.TestCase):
         self.assertIn("/js3rd", transformed)
         self.assertIn(self.versions["FUSE"], transformed)
 
-    def test_import_plotly(self):
-        code = "import Plotly from 'plotly.js-dist-min';"
+    def test_unregistered_library_import_is_preserved(self):
+        code = "import ExternalLibrary from 'external-library';"
         transformed = adapt_imports(code, self.versions, self.jsfiles, self.mini)
-        self.assertNotIn("/js3rd", transformed)
-        self.assertNotIn("/js", transformed)
-        self.assertNotIn("Plotly", transformed)
+        self.assertEqual(transformed, code)
 
     def test_import_multi(self):
         code = """
@@ -98,28 +96,23 @@ import {
     getSpeakerData
 } from './download.js';
 import {
-    knownMeasurements,
-    setContour,
-    setGlobe,
-    setGraph,
-    setCEA2034,
-    setRadar,
-    setSurface,
-} from './plot.js';
+    buildGraphUrl,
+    initGraphOptions,
+} from './graph_options.js';
         """
 
         minimized = adapt_imports(code, self.versions, self.jsfiles, self.mini)
         self.assertIn("/js3rd", minimized)
         self.assertIn("/js/download-{}.min.js".format(CACHE_VERSION), minimized)
         self.assertIn("/js/meta-{}.min.js".format(CACHE_VERSION), minimized)
-        self.assertIn("/js/plot-{}.min.js".format(CACHE_VERSION), minimized)
+        self.assertIn("/js/graph_options-{}.min.js".format(CACHE_VERSION), minimized)
         self.assertIn(self.versions["FUSE"], minimized)
 
         transformed = adapt_imports(code, self.versions, self.jsfiles, "")
         self.assertIn("/js3rd", transformed)
         self.assertIn("/js/download-{}.js".format(CACHE_VERSION), transformed)
         self.assertIn("/js/meta-{}.js".format(CACHE_VERSION), transformed)
-        self.assertIn("/js/plot-{}.js".format(CACHE_VERSION), transformed)
+        self.assertIn("/js/graph_options-{}.js".format(CACHE_VERSION), transformed)
         self.assertIn(self.versions["FUSE"], transformed)
 
     def test_meta_template_compiles(self):
@@ -134,8 +127,9 @@ import {
         self.assertIn("startsWith('$' + '{')", rendered)
         self.assertIn('JSON.parse(metadataFilenameChunksValue)', rendered)
 
-    def test_annotation_layout_is_bundled(self):
-        self.assertIn("annotation-layout", WEBSITE_JS_FILES)
+    def test_bundled_modules_have_sources(self):
+        for module in WEBSITE_JS_FILES:
+            self.assertTrue(Path(cpaths.CPATH_WEBSITE, f"{module}.js").is_file(), module)
 
     def test_copy_if_different_preserves_mtime_for_identical_output(self):
         with tempfile.TemporaryDirectory() as temporary_dir:
@@ -202,7 +196,6 @@ import {
                         WEBSITE_JS_FILES=("meta", "misc"),
                         create=True,
                     ),
-                    patch.object(generate_html, "generate_annotations_wasm"),
                     patch.object(generate_html.subprocess, "run", side_effect=copy_minifier_input),
                 ):
                     suffix = ".min" if optimized else ""

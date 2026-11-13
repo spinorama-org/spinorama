@@ -239,11 +239,13 @@ fn scatter_json_string(figure: &Figure) -> Result<String> {
     }
     if has_secondary {
         layout["yaxis2"] = json!({
-            "title": {"text": "Directivity Index (dB)"},
-            "range": Y2_RANGE_DB,
+            "title": {"text": figure.secondary_axis.as_ref().map_or("Directivity Index (dB)", |axis| axis.title.as_str())},
+            "range": figure.secondary_axis.as_ref().map_or(Y2_RANGE_DB, |axis| axis.range),
             "autorange": false,
             "overlaying": "y",
             "side": "right",
+            "showgrid": false,
+            "zeroline": false,
         });
     }
     Ok(serde_json::to_string(

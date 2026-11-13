@@ -227,6 +227,15 @@ pub struct SubplotCell {
     pub log_x: bool,
 }
 
+/// Explicit secondary-axis units and display range.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SecondaryAxis {
+    /// Axis bounds in the named unit.
+    pub range: [f64; 2],
+    /// Axis title, including its unit.
+    pub title: String,
+}
+
 /// One figure: named traces over a shared log frequency axis.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Figure {
@@ -251,6 +260,8 @@ pub struct Figure {
     pub y_title: Option<String>,
     /// Whether renderers draw the black 0 dB reference line.
     pub show_zero_line: bool,
+    /// Secondary axis override; otherwise secondary traces use the DI axis.
+    pub secondary_axis: Option<SecondaryAxis>,
 }
 
 impl Figure {
@@ -273,6 +284,7 @@ impl Figure {
             y_range: None,
             y_title: None,
             show_zero_line: true,
+            secondary_axis: None,
         }
     }
 
@@ -369,6 +381,7 @@ pub fn is_helper_trace_name(name: &str) -> bool {
     let lower = name.to_lowercase();
     lower == "n/a"
         || lower == "zero"
+        || lower.starts_with("phase")
         || lower.starts_with("recommended")
         || lower.ends_with(" zone")
         || lower.ends_with(" slope")
@@ -813,6 +826,14 @@ pub fn spin_figures(
         measured_by,
         valid_freq_range,
     );
+    if let Some((phase, axis)) = onaxis_phase(&data.horizontal, valid_freq_range) {
+        let onaxis = figures
+            .iter_mut()
+            .find(|figure| figure.name == "On Axis")
+            .expect("common figures include On Axis");
+        onaxis.traces.push(phase);
+        onaxis.secondary_axis = Some(axis);
+    }
     let mut hv_scatter = Vec::new();
     if let Some(group_delay) =
         group_delay_figure("Group Delay", title("Group Delay"), &data.horizontal)
@@ -1072,6 +1093,7 @@ fn contour_figure(name: &str, title: String, plane: &SplPlane, surface: bool) ->
         y_range: None,
         y_title: None,
         show_zero_line: true,
+        secondary_axis: None,
         kind: FigureKind::Contour(ContourData {
             angles,
             z,
@@ -1149,6 +1171,7 @@ fn radar_figure(name: &str, title: String, plane: &SplPlane) -> Figure {
         y_range: None,
         y_title: None,
         show_zero_line: true,
+        secondary_axis: None,
         kind: FigureKind::Radar(traces),
     }
 }
@@ -1233,6 +1256,88 @@ fn directivity_figure(name: &str, title: String, contour: &Figure) -> Option<Fig
     figure.y_title = Some("deg".to_owned());
     figure.y_tickvals = Some(vec![-180.0, -90.0, 0.0, 90.0, 180.0]);
     Some(figure)
+}
+
+fn onaxis_phase(plane: &SplPlane, valid_range: (f64, f64)) -> Option<(Trace, SecondaryAxis)> {
+    let measured = plane.phase_on_axis.as_ref()?;
+    if measured.len() != plane.freq.len()
+        || measured.len() < 2
+        || !measured.iter().any(|p| p.is_finite())
+    {
+        return None;
+    }
+    let mut phase = measured.clone();
+    if measured
+        .iter()
+        .filter(|p| p.is_finite())
+        .all(|p| p.abs() <= 180.0)
+    {
+        let mut previous: Option<f64> = None;
+        let mut offset = 0.0;
+        for value in &mut phase {
+            if !value.is_finite() {
+                previous = None;
+                offset = 0.0;
+                continue;
+            }
+            let raw = *value;
+            if let Some(prev) = previous {
+                if raw - prev > 180.0 {
+                    offset -= 360.0;
+                } else if raw - prev < -180.0 {
+                    offset += 360.0;
+                }
+            }
+            *value += offset;
+            previous = Some(raw);
+        }
+    }
+    // Match the Python delay estimate: fit degrees against Hz in the
+    // valid 12–16 kHz band, then subtract the linear phase contribution.
+    let band: Vec<_> = plane
+        .freq
+        .iter()
+        .zip(&phase)
+        .filter(|(f, p)| {
+            f.is_finite()
+                && p.is_finite()
+                && **f >= valid_range.0.max(12000.0)
+                && **f <= valid_range.1.min(16000.0)
+        })
+        .map(|(&f, &p)| (f, p))
+        .collect();
+    let mut delay = None;
+    if band.len() >= 3 {
+        let mean_f = band.iter().map(|p| p.0).sum::<f64>() / band.len() as f64;
+        let mean_p = band.iter().map(|p| p.1).sum::<f64>() / band.len() as f64;
+        let variance = band.iter().map(|p| (p.0 - mean_f).powi(2)).sum::<f64>();
+        if variance > 0.0 {
+            let covariance = band
+                .iter()
+                .map(|p| (p.0 - mean_f) * (p.1 - mean_p))
+                .sum::<f64>();
+            let seconds = -covariance / variance / 360.0;
+            for (&f, value) in plane.freq.iter().zip(&mut phase) {
+                *value += 360.0 * f * seconds;
+            }
+            delay = Some(seconds);
+        }
+    }
+    let title = delay.map_or_else(
+        || "Phase (deg; delay not removed)".to_owned(),
+        |seconds| format!("Phase (deg; {:.2} ms delay removed)", seconds * 1000.0),
+    );
+    let phase = phase
+        .into_iter()
+        .map(|value| (value + 180.0).rem_euclid(360.0) - 180.0)
+        .collect();
+    Some((
+        Trace::with_x("Phase (deg)", plane.freq.clone(), phase, Axis::Secondary).dash("dash"),
+        SecondaryAxis {
+            range: [-180.0, 360.0],
+            title,
+        },
+    ))
 }
 
 fn group_delay_figure(name: &str, title: String, plane: &SplPlane) -> Option<Figure> {
@@ -1592,6 +1697,7 @@ pub fn eq_filter_figures(
                     y_range: None,
                     y_title: None,
                     show_zero_line: true,
+                    secondary_axis: None,
                 }
             };
         let hist_full = bar_fig(
@@ -1655,6 +1761,7 @@ pub fn eq_filter_figures(
         y_range: None,
         y_title: None,
         show_zero_line: true,
+        secondary_axis: None,
     });
     figures
 }

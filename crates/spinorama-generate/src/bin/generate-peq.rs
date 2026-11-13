@@ -627,6 +627,7 @@ fn histogram_figure(
         y_range: None,
         y_title: None,
         show_zero_line: true,
+        secondary_axis: None,
         kind: FigureKind::Bar(vec![
             BarTrace {
                 name: "noEQ".to_owned(),

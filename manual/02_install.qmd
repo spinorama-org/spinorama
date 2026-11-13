@@ -114,8 +114,32 @@ From the repository root, with the virtual environment active:
 ```{.shell}
 PYTHONPATH=src pytest -q tests
 npx vitest
-./scripts/check_meta.py
+make check-meta
 ```
+
+Run the deployed-site checks with Chromium:
+
+```{.shell}
+npm install
+npx playwright install chromium
+make test-dev
+```
+
+`make test-dev` runs Vitest against `https://dev.spinorama.org`. It checks
+JavaScript asset loading, pagination across up to five available pages, and search.
+The checks select a speaker from the live catalogue and accept changes to speaker
+names, counts, and ordering between runs. HTTP errors,
+failed requests, and browser JavaScript errors fail the suite. Failed tests save
+screenshots under `output/playwright/dev/`.
+
+To check a local server or another deployment, set the site URL:
+
+```{.shell}
+SPINORAMA_TEST_URL=http://localhost:8888 npm run test:dev
+```
+
+In GitHub Actions, run the `Spinorama Javascript` workflow manually to include
+the `dev-smoke` job. Set `base_url` to choose a deployment.
 
 Useful formatting and lint checks are:
 

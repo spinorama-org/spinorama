@@ -60,7 +60,99 @@ fn metadata_check_passes_on_repository() {
     );
     // Exact count on purpose: an accidental speaker drop or duplicate
     // in the catalogue must fail loudly. Bump when speakers are added.
-    assert_eq!(report.speakers, 1168);
+    assert_eq!(report.speakers, 1169);
+}
+
+fn metadata_fixture(label: &str) -> (PathBuf, PathBuf) {
+    let root = std::env::temp_dir().join(format!("spinorama-meta-{label}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let measurements = root.join("measurements");
+    let speaker = measurements.join("Test_Speaker");
+    std::fs::create_dir_all(speaker.join("asr")).unwrap();
+    std::fs::write(
+        root.join("origins.toml"),
+        "[origins.ASR]\n\"min hz\" = 20\n\"max hz\" = 20000\n\"min dB\" = -40\n\"max dB\" = 10\n",
+    )
+    .unwrap();
+    let path = speaker.join("meta.toml");
+    std::fs::write(&path, "name = \"Test|Speaker\"\nbrand = \"Test\"\nmodel = \"Speaker\"\ntype = \"passive\"\nprice = \"1\"\nshape = \"bookshelves\"\ndefault_measurement = \"asr\"\n[measurements.asr]\norigin = \"ASR\"\nformat = \"rew_text_dump\"\n").unwrap();
+    (measurements, path)
+}
+
+#[test]
+fn metadata_consistency_rules_reject_bad_fields() {
+    let (root, path) = metadata_fixture("names");
+    let valid = std::fs::read_to_string(&path).unwrap();
+    for (from, to, error) in [
+        ("brand = \"Test\"", "brand = \"\"", "brand is empty"),
+        ("brand = \"Test\"", "brand = \"Other\"", "start with brand"),
+        ("model = \"Speaker\"", "model = \"\"", "model is empty"),
+        ("model = \"Speaker\"", "model = \"Other\"", "end with model"),
+        (
+            "default_measurement = \"asr\"",
+            "default_measurement = \"missing\"",
+            "not in measurements",
+        ),
+        ("origin = \"ASR\"", "origin = \"Unknown\"", "unknown origin"),
+        (
+            "[measurements.asr]\norigin = \"ASR\"\nformat = \"rew_text_dump\"",
+            "[measurements]",
+            "at least one measurement",
+        ),
+    ] {
+        std::fs::write(&path, valid.replace(from, to)).unwrap();
+        let report = check_metadata(&root).unwrap();
+        assert!(
+            report.errors.iter().any(|message| message.contains(error)),
+            "{:?}",
+            report.errors
+        );
+    }
+    std::fs::remove_dir_all(root.parent().unwrap()).unwrap();
+}
+
+#[test]
+fn check_files_loads_measurements_and_reports_broken_or_skipped_sources() {
+    use std::process::Command;
+    let (root, path) = metadata_fixture("files");
+    let run = || {
+        Command::new(env!("CARGO_BIN_EXE_generate-graph"))
+            .arg("--metadata-dir")
+            .arg(&root)
+            .args(["--check-meta", "--check-files"])
+            .output()
+            .unwrap()
+    };
+    let broken = run();
+    assert!(!broken.status.success());
+    assert!(String::from_utf8_lossy(&broken.stderr).contains("could not be loaded"));
+    let version = path.parent().unwrap().join("asr");
+    for file in ["On Axis.txt", "ER.txt", "LW.txt", "SP.txt"] {
+        std::fs::write(version.join(file), "20 85\n20000 85\n").unwrap();
+    }
+    let valid = run();
+    assert!(
+        valid.status.success(),
+        "{}",
+        String::from_utf8_lossy(&valid.stderr)
+    );
+    std::fs::write(version.join("On Axis.txt"), "not measurement data\n").unwrap();
+    let corrupt = run();
+    assert!(!corrupt.status.success());
+    assert!(String::from_utf8_lossy(&corrupt.stderr).contains("could not be loaded"));
+    std::fs::remove_dir_all(&version).unwrap();
+    let missing = run();
+    assert!(!missing.status.success());
+    assert!(String::from_utf8_lossy(&missing.stderr).contains("missing directory"));
+    let text = std::fs::read_to_string(&path)
+        .unwrap()
+        .replace("[measurements.asr]", "skip = true\n[measurements.asr]");
+    std::fs::write(&path, text).unwrap();
+    assert!(
+        run().status.success(),
+        "skipped speakers must not load data"
+    );
+    std::fs::remove_dir_all(root.parent().unwrap()).unwrap();
 }
 
 #[test]

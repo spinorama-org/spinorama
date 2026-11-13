@@ -26,4 +26,5 @@ toml.workspace = true
 webp.workspace = true
 
 [dev-dependencies]
+d3rs.workspace = true
 serde_json.workspace = true

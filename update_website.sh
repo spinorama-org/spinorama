@@ -16,6 +16,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+cd -- "$(dirname -- "$0")" || exit 1
 mkdir -p .cache
 mkdir -p build/website
 SECONDS=0
@@ -84,8 +85,10 @@ while [ $# -gt 0 ]; do
 done
 elapsed_status "Target: $SITE_TARGET"
 
-export CARGO_HOME=${CARGO_HOME:-/Volumes/home_tmp/tmp/cargo-home}
-export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-/Volumes/home_worktrees/spinorama-workspace-target}
+export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-"$PWD/target"}
+export GPUI_TOOLKIT_DIR=${GPUI_TOOLKIT_DIR:-"$(cd ../.. && pwd)/gpui-toolkit"}
+export RENDER_TARGET_DIR=${RENDER_TARGET_DIR:-"$GPUI_TOOLKIT_DIR/target"}
+export SPINORAMA_RENDER_IMAGES=${SPINORAMA_RENDER_IMAGES:-"$RENDER_TARGET_DIR/release/spinorama-render-images"}
 GENERATE_GRAPH="$CARGO_TARGET_DIR/release/generate-graph"
 GENERATE_RADAR="$CARGO_TARGET_DIR/release/generate-radar"
 GENERATE_EQ_COMPARE="$CARGO_TARGET_DIR/release/generate-eq-compare"
@@ -102,45 +105,13 @@ else
 fi
 export PYTHONPATH=src:src/website:src/spinorama:.
 
-# check meta
-${THEPYTHON} ./scripts/check_meta.py
-status=$?
-if [ $status -ne 0 ]; then
-    elapsed_status "KO checking metadata ($status)";
-    exit 1;
-else
-    elapsed_status "OK checking metadata"
-fi
-
-# update logos and speakers picture
-./scripts/update_pictures.sh
-status=$?
-if [ $status -ne 0 ]; then
-    elapsed_status "KO after updating pictures ($status)"
-    exit 1
-else
-    elapsed_status "OK after updating pictures"
-fi
-
-# build the Rust generators (and the GPUI renderer when its checkout
-# is present)
+# Build the Rust generators and the GPUI renderer used below.
 if [ "$SKIP_BUILD" -eq 0 ]; then
-    make generate-build
+    make generate-build renderer-build
     status=$?
     if [ $status -ne 0 ]; then
         elapsed_status "KO building Rust generators ($status)"
         exit 1
-    fi
-    if [ -f /Volumes/home_tmp/src/gpui-toolkit/Cargo.toml ]; then
-        cargo build --release \
-            --manifest-path /Volumes/home_tmp/src/gpui-toolkit/Cargo.toml \
-            -p gpui-spinorama --features capture-bench \
-            --bin spinorama-render-images
-        status=$?
-        if [ $status -ne 0 ]; then
-            elapsed_status "KO building GPUI renderer ($status)"
-            exit 1
-        fi
     fi
     elapsed_status "OK after building Rust generators"
 else
@@ -148,6 +119,10 @@ else
 fi
 if [ ! -x "$GENERATE_GRAPH" ]; then
     elapsed_status "KO missing $GENERATE_GRAPH (run without --skip-build)"
+    exit 1
+fi
+if [ ! -x "$SPINORAMA_RENDER_IMAGES" ]; then
+    elapsed_status "KO missing renderer $SPINORAMA_RENDER_IMAGES (run without --skip-build)"
     exit 1
 fi
 
@@ -159,6 +134,16 @@ if [ $status -ne 0 ]; then
     exit 1
 else
     elapsed_status "OK after checking TOML metadata"
+fi
+
+# update logos and speakers picture
+./scripts/update_pictures.sh
+status=$?
+if [ $status -ne 0 ]; then
+    elapsed_status "KO after updating pictures ($status)"
+    exit 1
+else
+    elapsed_status "OK after updating pictures"
 fi
 
 # generate all speaker graphs with the Rust pipeline (incremental:

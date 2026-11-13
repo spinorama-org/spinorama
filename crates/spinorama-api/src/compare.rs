@@ -30,7 +30,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 /// Cache namespace; bump when the rendered picture changes shape.
-pub(crate) const COMPARE_CACHE_VERSION: &str = "compare-v5-speaker-colors-markers";
+pub(crate) const COMPARE_CACHE_VERSION: &str = "compare-v11-connected-phase";
 
 /// Measurements the comparison view may overlay (Python whitelist).
 pub(crate) const ALLOWED_MEASUREMENTS: [&str; 14] = [
@@ -107,7 +107,9 @@ impl Default for RenderOptions {
 impl RenderOptions {
     fn parse(query: &HashMap<String, String>, zones_default: bool) -> Self {
         let flag = |key: &str, default: bool| {
-            query.get(key).map_or(default, |v| !matches!(v.as_str(), "0" | "false" | "off"))
+            query
+                .get(key)
+                .map_or(default, |v| !matches!(v.as_str(), "0" | "false" | "off"))
         };
         let smooth_oct = query
             .get("smooth")
@@ -148,7 +150,13 @@ impl RenderOptions {
 
 /// Moving-average smoothing over a log-spaced frequency axis with a
 /// window `octaves` wide. NaN samples are skipped; NaN stays NaN.
-fn smooth_octaves(values: &[f64], points: usize, freq_min: f64, freq_max: f64, octaves: f64) -> Vec<f64> {
+fn smooth_octaves(
+    values: &[f64],
+    points: usize,
+    freq_min: f64,
+    freq_max: f64,
+    octaves: f64,
+) -> Vec<f64> {
     if octaves <= 0.0 || points < 3 || freq_min <= 0.0 || freq_max <= freq_min {
         return values.to_vec();
     }
@@ -176,7 +184,11 @@ fn smooth_octaves(values: &[f64], points: usize, freq_min: f64, freq_max: f64, o
             }
         }
         #[expect(clippy::cast_precision_loss, reason = "window size fits in f64")]
-        out.push(if count > 0 { sum / count as f64 } else { f64::NAN });
+        out.push(if count > 0 {
+            sum / count as f64
+        } else {
+            f64::NAN
+        });
     }
     out
 }
@@ -265,6 +277,7 @@ fn is_helper_trace(name: &str) -> bool {
     let lower = name.to_lowercase();
     lower == "n/a"
         || lower == "zero"
+        || lower.starts_with("phase")
         || lower.starts_with("recommended")
         || lower.ends_with(" zone")
         || lower.ends_with(" slope")
@@ -482,11 +495,16 @@ impl Bundle {
             .collect()
     }
 
-    fn visible_traces(&self, opts: &RenderOptions) -> Vec<&Trace> {
+    fn visible_traces(&self, opts: &RenderOptions, comparison: bool) -> Vec<&Trace> {
         self.traces
             .iter()
             .filter(|trace| {
                 let name = trace.name.to_lowercase();
+                // Filled bands lose their polygon geometry in trace bundles.
+                // Keep short reference lines such as Midrange Band +3dB.
+                if comparison && name.starts_with("band ") {
+                    return false;
+                }
                 // Slope helpers are never drawn (Python rule).
                 if name.ends_with(" slope") {
                     return false;
@@ -605,7 +623,7 @@ fn text_width(font: &Font, text: &str, px: f32) -> f64 {
         .sum()
 }
 
-/// Draws text with its top-left corner at (`x`, `y`), alpha-blended.
+/// Draws text at horizontal origin `x` and baseline `y`, alpha-blended.
 fn draw_text(img: &mut RgbImage, font: &Font, text: &str, px: f32, x: f64, y: f64, color: Rgb<u8>) {
     let mut cursor = x;
     for c in text.chars() {
@@ -639,6 +657,55 @@ fn draw_text(img: &mut RgbImage, font: &Font, text: &str, px: f32, x: f64, y: f6
         }
         cursor += f64::from(metrics.advance_width);
     }
+}
+
+/// Baseline that centers the actual glyph ink around `center`.
+fn centered_baseline(font: &Font, text: &str, px: f32, center: f64) -> f64 {
+    let top = text
+        .chars()
+        .map(|c| {
+            let m = font.metrics(c, px);
+            m.ymin + m.height as i32
+        })
+        .max()
+        .unwrap_or(0);
+    let bottom = text
+        .chars()
+        .map(|c| font.metrics(c, px).ymin)
+        .min()
+        .unwrap_or(0);
+    center + f64::from(top + bottom) / 2.0
+}
+
+fn fit_text(font: &Font, text: &str, px: f32, width: f64) -> f32 {
+    px * (width / text_width(font, text, px).max(1.0)).min(1.0) as f32
+}
+
+fn draw_axis_title(
+    img: &mut RgbImage,
+    font: &Font,
+    text: &str,
+    px: f32,
+    x: f64,
+    center_y: f64,
+    right: bool,
+) {
+    let width = text_width(font, text, px).ceil() as u32 + 4;
+    let height = (px * 1.5).ceil() as u32;
+    let mut label = RgbImage::from_pixel(width, height, Rgb([255, 255, 255]));
+    let baseline = centered_baseline(font, text, px, f64::from(height) / 2.0);
+    draw_text(&mut label, font, text, px, 2.0, baseline, TEXT);
+    let rotated = if right {
+        image::imageops::rotate90(&label)
+    } else {
+        image::imageops::rotate270(&label)
+    };
+    image::imageops::overlay(
+        img,
+        &rotated,
+        (x - f64::from(rotated.width()) / 2.0).round() as i64,
+        (center_y - f64::from(rotated.height()) / 2.0).round() as i64,
+    );
 }
 
 /// Deterministic byte RNG seeded like Python `_seed_bytes`
@@ -875,7 +942,13 @@ pub(crate) fn serve(
 
     let opts = RenderOptions::parse(query, false);
     let mut digest = Sha256::new();
-    digest.update(format!("{COMPARE_CACHE_VERSION}|{measurement}|{width}|{}|", opts.cache_key()).as_bytes());
+    digest.update(
+        format!(
+            "{COMPARE_CACHE_VERSION}|{measurement}|{width}|{}|",
+            opts.cache_key()
+        )
+        .as_bytes(),
+    );
     for bytes in &bundle_bytes {
         digest.update(bytes);
     }
@@ -978,7 +1051,11 @@ pub(crate) fn serve_graph(
     }
     let origin = origin.strip_prefix("Vendors-").unwrap_or(origin);
     let Some(path) = crate::safe_path(
-        &spin_files.join(speaker).join(origin).join(version).join("traces"),
+        &spin_files
+            .join(speaker)
+            .join(origin)
+            .join(version)
+            .join("traces"),
         &[&format!("{measurement}.json")],
     ) else {
         return fail(400, "invalid speaker, origin, or version");
@@ -989,7 +1066,13 @@ pub(crate) fn serve_graph(
     let bundle_bytes = std::fs::read(&path).unwrap_or_default();
     let opts = RenderOptions::parse(query, true);
     let mut digest = Sha256::new();
-    digest.update(format!("{COMPARE_CACHE_VERSION}|graph|{measurement}|{width}|{}|", opts.cache_key()).as_bytes());
+    digest.update(
+        format!(
+            "{COMPARE_CACHE_VERSION}|graph|{measurement}|{width}|{}|",
+            opts.cache_key()
+        )
+        .as_bytes(),
+    );
     digest.update(&bundle_bytes);
     let cache_file = state
         .cache_dir
@@ -1002,7 +1085,14 @@ pub(crate) fn serve_graph(
         let bundle = parse_bundle(std::str::from_utf8(&bundle_bytes)?)?;
         let name = format!("{speaker} ({origin})");
         let source = source_label(&origin, &version);
-        render_bundles(&[&bundle], &[name.as_str()], measurement, width, &[source.as_str()], &opts)
+        render_bundles(
+            &[&bundle],
+            &[name.as_str()],
+            measurement,
+            width,
+            &[source.as_str()],
+            &opts,
+        )
     })
 }
 
@@ -1077,8 +1167,30 @@ fn fill_polygon(img: &mut RgbImage, verts: &[(f64, f64)], color: Rgb<u8>) {
     }
 }
 
-/// Draws one marker of half-size `r` centred at (`x`, `y`).
+/// Convex-hull area at unit radius for each marker's geometry.
+fn marker_hull_area(marker: Marker) -> f64 {
+    use std::f64::consts::PI;
+    let d = (2.2 - 0.45) / 2.0;
+    let cap = 0.45 / 2.0;
+    match marker {
+        Marker::Circle => PI,
+        Marker::Square => 4.0,
+        Marker::Diamond => 2.5,
+        Marker::TriangleUp
+        | Marker::TriangleDown
+        | Marker::TriangleLeft
+        | Marker::TriangleRight => 2.2 * 2.05 / 2.0,
+        Marker::Star => 2.5 * 1.3_f64.powi(2) * (2.0 * PI / 5.0).sin(),
+        // The stroked cross/X hulls are a diamond/square expanded by the
+        // round line caps: A + perimeter * cap radius + pi * radius².
+        Marker::Cross => 2.0 * d * d + 4.0 * d * 2.0_f64.sqrt() * cap + PI * cap * cap,
+        Marker::X => 4.0 * d * d + 8.0 * d * cap + PI * cap * cap,
+    }
+}
+
+/// Draws markers with the small triangle's convex-hull area.
 fn draw_marker(img: &mut RgbImage, x: f64, y: f64, r: f64, marker: Marker, color: Rgb<u8>) {
+    let r = r * (marker_hull_area(Marker::TriangleUp) / marker_hull_area(marker)).sqrt();
     match marker {
         Marker::Circle => stamp(img, x, y, r, color),
         Marker::Square => fill_polygon(
@@ -1143,13 +1255,14 @@ fn draw_marker(img: &mut RgbImage, x: f64, y: f64, r: f64, marker: Marker, color
             fill_polygon(img, &verts, color);
         }
         Marker::Cross => {
-            let w = 2.4 * f64::from(SS);
-            draw_segment(img, (x - r, y), (x + r, y), color, w);
-            draw_segment(img, (x, y - r), (x, y + r), color, w);
+            let w = r * 0.45;
+            let d = (2.2 * r - w) / 2.0;
+            draw_segment(img, (x - d, y), (x + d, y), color, w);
+            draw_segment(img, (x, y - d), (x, y + d), color, w);
         }
         Marker::X => {
-            let w = 2.4 * f64::from(SS);
-            let d = r * 0.85;
+            let w = r * 0.45;
+            let d = (2.2 * r - w) / 2.0;
             draw_segment(img, (x - d, y - d), (x + d, y + d), color, w);
             draw_segment(img, (x - d, y + d), (x + d, y - d), color, w);
         }
@@ -1242,14 +1355,22 @@ fn render_bundles(
         y_range = (y_range.1 - span, y_range.1);
     }
     let y_range = y_range;
-    let y2_range = if has_y2 {
-        axis_range(bundles, "y2")
+    let phase_axis = bundles.iter().any(|bundle| {
+        bundle
+            .traces
+            .iter()
+            .any(|trace| trace.axis == "y2" && trace.name == "Phase (deg)")
+    });
+    let y2_range = if phase_axis {
+        axis_range(bundles, "y2").or(Some((-180.0, 360.0)))
+    } else if has_y2 {
+        Some((-5.0, 45.0))
     } else {
         None
     };
     let n_traces = bundles
         .iter()
-        .map(|b| b.visible_traces(opts).len())
+        .map(|b| b.visible_traces(opts, bundles.len() > 1).len())
         .max()
         .unwrap_or(0);
     #[expect(clippy::cast_precision_loss, reason = "trace counts fit in f64")]
@@ -1261,7 +1382,7 @@ fn render_bundles(
     };
     #[expect(clippy::cast_possible_truncation, reason = "height fits in u32")]
     #[expect(clippy::cast_sign_loss, reason = "height is positive")]
-    let height = (f64::from(width) * 2.0 / 3.0) as u32 + legend_rows * 18;
+    let height = (f64::from(width) * 2.0 / 3.0) as u32 + legend_rows * 22;
 
     let s = |v: f64| v * f64::from(SS);
     let (w_px, h_px) = (width * SS, height * SS);
@@ -1274,10 +1395,10 @@ fn render_bundles(
         (width / 48).max(22) as f32 * SS as f32,
     );
 
-    let margin_l = 64.0;
-    let margin_r = if has_y2 { 64.0 } else { 18.0 };
-    let margin_t = 64.0;
-    let margin_b = 52.0 + f64::from(legend_rows) * 18.0;
+    let margin_l = 76.0;
+    let margin_r = if has_y2 { 76.0 } else { 18.0 };
+    let margin_t = if names.len() > 1 { 94.0 } else { 64.0 };
+    let margin_b = 72.0 + f64::from(legend_rows) * 22.0;
     let (plot_x0, plot_y0) = (s(margin_l), s(margin_t));
     let (plot_x1, plot_y1) = (
         s(f64::from(width) - margin_r),
@@ -1298,21 +1419,33 @@ fn render_bundles(
     let y_of =
         |value: f64, range: (f64, f64)| plot_y1 - (value - range.0) / (range.1 - range.0) * plot_h;
 
-    let title_text = if names.len() > 1 {
-        format!("{graph_name}: {} vs {}", names[0], names[1])
+    let title_lines = if names.len() > 1 {
+        vec![
+            format!("{graph_name}: {}", names[0]),
+            format!("vs {}", names[1]),
+        ]
     } else {
-        format!("{graph_name} for {}", names.first().copied().unwrap_or_default())
+        vec![format!(
+            "{graph_name} for {}",
+            names.first().copied().unwrap_or_default()
+        )]
     };
     if let Some(font) = &font {
-        draw_text(
-            &mut img,
-            font,
-            &title_text,
-            title_px,
-            plot_x0,
-            s(14.0) + f64::from(title_px),
-            TEXT,
-        );
+        let title_size = title_lines
+            .iter()
+            .map(|line| fit_text(font, line, title_px, plot_w))
+            .fold(title_px, f32::min);
+        for (row, line) in title_lines.iter().enumerate() {
+            draw_text(
+                &mut img,
+                font,
+                line,
+                title_size,
+                plot_x0,
+                s(14.0) + f64::from(title_size) + row as f64 * s(30.0),
+                TEXT,
+            );
+        }
     }
     for freq in [
         20.0, 50.0, 100.0, 200.0, 500.0, 1_000.0, 2_000.0, 5_000.0, 10_000.0, 20_000.0,
@@ -1351,22 +1484,27 @@ fn render_bundles(
                 font,
                 &fmt_tick(tick),
                 small_px,
-                s(8.0),
-                y + s(2.0),
+                plot_x0 - s(6.0) - text_width(font, &fmt_tick(tick), small_px),
+                centered_baseline(font, &fmt_tick(tick), small_px, y),
                 TEXT,
             );
         }
     }
     if let (Some(range), Some(font)) = (y2_range, &font) {
-        for tick in nice_ticks(range.0, range.1) {
+        let ticks = if phase_axis {
+            vec![-180.0, -90.0, 0.0, 90.0, 180.0, 270.0, 360.0]
+        } else {
+            nice_ticks(range.0, range.1)
+        };
+        for tick in ticks {
             let y = y_of(tick, range);
             draw_text(
                 &mut img,
                 font,
                 &fmt_tick(tick),
                 small_px,
-                plot_x1 + s(8.0),
-                y + s(2.0),
+                plot_x1 + s(6.0),
+                centered_baseline(font, &fmt_tick(tick), small_px, y),
                 TEXT,
             );
         }
@@ -1380,6 +1518,26 @@ fn render_bundles(
         draw_segment(&mut img, a, b, AXIS, f64::from(SS));
     }
     if let Some(font) = &font {
+        draw_axis_title(
+            &mut img,
+            font,
+            "SPL (dB)",
+            small_px,
+            s(15.0),
+            (plot_y0 + plot_y1) / 2.0,
+            false,
+        );
+        if has_y2 {
+            draw_axis_title(
+                &mut img,
+                font,
+                if phase_axis { "Phase (deg)" } else { "DI (dB)" },
+                small_px,
+                s(f64::from(width) - 15.0),
+                (plot_y0 + plot_y1) / 2.0,
+                true,
+            );
+        }
         draw_text(
             &mut img,
             font,
@@ -1397,7 +1555,7 @@ fn render_bundles(
             continue;
         }
         let dashed = speaker_idx == 1;
-        for trace in bundle.visible_traces(opts) {
+        for trace in bundle.visible_traces(opts, bundles.len() > 1) {
             let range = if trace.axis == "y2" {
                 y2_range.unwrap_or(y_range)
             } else {
@@ -1407,13 +1565,18 @@ fn render_bundles(
             // identity comes from its marker shape, shared across
             // speakers for the same measurement.
             let color = trace_color(&trace.name, speaker_idx, bundles.len());
-            let values = smooth_octaves(
-                &trace.values,
-                bundle.points,
-                bundle.freq_min,
-                bundle.freq_max,
-                opts.smooth_oct,
-            );
+            let is_phase = phase_axis && trace.axis == "y2";
+            let values = if is_phase {
+                trace.values.clone()
+            } else {
+                smooth_octaves(
+                    &trace.values,
+                    bundle.points,
+                    bundle.freq_min,
+                    bundle.freq_max,
+                    opts.smooth_oct,
+                )
+            };
             let points: Vec<(f64, f64)> = freqs
                 .iter()
                 .zip(&values)
@@ -1425,7 +1588,13 @@ fn render_bundles(
                     }
                 })
                 .collect();
-            draw_polyline(&mut img, &points, color, dashed, 2.0 * f64::from(SS));
+            draw_polyline(
+                &mut img,
+                &points,
+                color,
+                dashed || is_phase,
+                2.0 * f64::from(SS),
+            );
             if let Some(marker) = marker_for(&trace.name) {
                 draw_markers(
                     &mut img,
@@ -1438,8 +1607,10 @@ fn render_bundles(
         }
     }
 
-    if opts.legend && let Some(font) = &font {
-        let mut legend_y = plot_y1 + s(34.0);
+    if opts.legend
+        && let Some(font) = &font
+    {
+        let mut legend_y = plot_y1 + s(50.0);
         for (speaker_idx, bundle) in bundles.iter().enumerate() {
             let name = names[speaker_idx];
             let label = if speaker_idx == 1 {
@@ -1451,18 +1622,24 @@ fn render_bundles(
                 &mut img,
                 font,
                 &label,
-                font_px,
+                fit_text(font, &label, font_px, plot_w),
                 plot_x0,
                 legend_y + f64::from(font_px),
                 TEXT,
             );
             legend_y += s(20.0);
-            let mut x = plot_x0;
-            for (trace_idx, trace) in bundle.visible_traces(opts).iter().enumerate() {
+            for (trace_idx, trace) in bundle
+                .visible_traces(opts, bundles.len() > 1)
+                .iter()
+                .enumerate()
+            {
+                let x = plot_x0 + (trace_idx % 3) as f64 * plot_w / 3.0;
+                let label_px = fit_text(font, &trace.name, small_px, plot_w / 3.0 - s(40.0));
+                let baseline = centered_baseline(font, &trace.name, label_px, legend_y + s(9.0));
                 let color = trace_color(&trace.name, speaker_idx, bundles.len());
                 draw_polyline(
                     &mut img,
-                    &[(x, legend_y + s(7.0)), (x + s(26.0), legend_y + s(7.0))],
+                    &[(x, legend_y + s(9.0)), (x + s(26.0), legend_y + s(9.0))],
                     color,
                     speaker_idx == 1,
                     2.0 * f64::from(SS),
@@ -1471,7 +1648,7 @@ fn render_bundles(
                     draw_marker(
                         &mut img,
                         x + s(13.0),
-                        legend_y + s(7.0),
+                        legend_y + s(9.0),
                         4.5 * f64::from(SS),
                         marker,
                         color,
@@ -1481,15 +1658,13 @@ fn render_bundles(
                     &mut img,
                     font,
                     &trace.name,
-                    small_px,
+                    label_px,
                     x + s(32.0),
-                    legend_y + f64::from(small_px),
+                    baseline,
                     TEXT,
                 );
-                x += s(38.0) + text_width(font, &trace.name, small_px) + s(18.0);
                 if (trace_idx + 1) % 3 == 0 {
-                    x = plot_x0;
-                    legend_y += s(18.0);
+                    legend_y += s(22.0);
                 }
             }
             legend_y += s(22.0);
@@ -1586,7 +1761,7 @@ mod tests {
         assert_eq!(values[1], 1.0);
         assert!(values[2].is_nan());
         // Recommended zones are dropped from the overlay.
-        assert_eq!(bundle.visible_traces(&opts).len(), 1);
+        assert_eq!(bundle.visible_traces(&opts, true).len(), 1);
         assert_eq!(bundle.freqs().len(), 3);
     }
 
@@ -1648,6 +1823,62 @@ mod tests {
             Some(400)
         );
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn comparison_omits_bands_but_keeps_trends_and_short_reference_lines() {
+        let mut bundle = parse_bundle(&bundle_json(&[0, 0], &[0, 0])).unwrap();
+        bundle.traces = [
+            "Band ±3dB",
+            "Band ±1.5dB",
+            "Midrange ±3dB",
+            "Midrange Band +3dB",
+            "Midrange Band -3dB",
+            "Linear Regression",
+            "On Axis",
+        ]
+        .into_iter()
+        .map(|name| Trace {
+            name: name.to_owned(),
+            axis: "y".to_owned(),
+            values: vec![0.0; 2],
+        })
+        .collect();
+        let opts = RenderOptions::default();
+        let names: Vec<_> = bundle
+            .visible_traces(&opts, true)
+            .iter()
+            .map(|t| t.name.as_str())
+            .collect();
+        assert_eq!(
+            names,
+            [
+                "Midrange ±3dB",
+                "Midrange Band +3dB",
+                "Midrange Band -3dB",
+                "Linear Regression",
+                "On Axis"
+            ]
+        );
+        assert_eq!(bundle.visible_traces(&opts, false).len(), 7);
+    }
+
+    #[test]
+    fn text_ink_is_centered_on_ticks_and_legend_samples() {
+        let font = load_font().expect("font for renderer tests");
+        for text in ["-45", "0", "20", "On Axis", "Sound Power DI"] {
+            let mut img = RgbImage::from_pixel(400, 80, Rgb([255, 255, 255]));
+            let baseline = centered_baseline(&font, text, 24.0, 40.0);
+            draw_text(&mut img, &font, text, 24.0, 10.0, baseline, TEXT);
+            let rows: Vec<_> = (0..80)
+                .filter(|&y| (0..400).any(|x| img.get_pixel(x, y).0[0] < 128))
+                .collect();
+            let center = f64::from(rows[0] + rows[rows.len() - 1]) / 2.0;
+            assert!(
+                (center - 40.0).abs() <= 1.0,
+                "{text}: ink centered at {center}"
+            );
+        }
     }
 
     #[test]
@@ -1739,13 +1970,47 @@ mod tests {
     }
 
     #[test]
+    fn rendered_marker_hulls_match_the_small_triangles() {
+        use d3rs::polygon::{polygon_area, polygon_hull};
+        let mut areas = Vec::new();
+        for marker in [
+            Marker::Circle,
+            Marker::Square,
+            Marker::Diamond,
+            Marker::TriangleUp,
+            Marker::TriangleDown,
+            Marker::TriangleLeft,
+            Marker::TriangleRight,
+            Marker::Star,
+            Marker::Cross,
+            Marker::X,
+        ] {
+            let mut img = RgbImage::from_pixel(201, 201, Rgb([255, 255, 255]));
+            draw_marker(&mut img, 100.0, 100.0, 30.0, marker, Rgb([0, 0, 0]));
+            let points: Vec<_> = img
+                .enumerate_pixels()
+                .filter(|(_, _, p)| p[0] < 128)
+                .map(|(x, y, _)| (f64::from(x), f64::from(y)))
+                .collect();
+            areas.push(polygon_area(&polygon_hull(&points)).abs());
+        }
+        let triangle = areas[3];
+        assert!(
+            areas
+                .iter()
+                .all(|area| (area / triangle - 1.0).abs() < 0.12),
+            "rasterized hull areas: {areas:?}"
+        );
+    }
+
+    #[test]
     fn marker_shapes_draw_distinct_glyphs() {
         // Square fills its corner; diamond and triangle-up do not.
         let probe = |marker: Marker| {
             let mut img = RgbImage::from_pixel(41, 41, Rgb([255, 255, 255]));
             draw_marker(&mut img, 20.0, 20.0, 10.0, marker, Rgb([0, 0, 0]));
             (
-                *img.get_pixel(11, 11),
+                *img.get_pixel(13, 13),
                 *img.get_pixel(20, 20),
                 *img.get_pixel(20, 9),
             )

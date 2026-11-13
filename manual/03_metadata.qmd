@@ -204,19 +204,22 @@ speaker's brand and model. The manager recognizes `.png`, `.jpg`, `.jpeg`, and
 `.webp` files.
 
 After adding measurement files or metadata, run the project checks from the
-repository root:
+repository root. These commands validate the website's TOML catalogue in
+`datas/measurements/<speaker>/meta.toml`:
 
 ```{.shell}
-./scripts/check_meta.py
+make check-meta
+# Also parse the measurement files for one speaker:
+make check-meta-files SPEAKER="Brand Model"
 ```
 
 To regenerate and inspect a speaker's graphs after the metadata and source
 files are in place:
 
 ```{.shell}
-python scripts/generate_graphs.py --speaker "Brand Model" --log-level INFO
+make images SPEAKER="Brand Model"
 ```
 
-Generated results are written below `dist/<speaker>/`. If generation fails,
+Generated results are written below `dist/speakers/<speaker>/<origin>/`. If generation fails,
 repeat it with `--log-level debug`; incorrect paths or incomplete metadata are
 the most common causes.

@@ -5,6 +5,13 @@ on:
     branches: [ main, develop ]
   pull_request:
     branches: [ main, develop ]
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: Website to test
+        default: https://dev.spinorama.org
+        required: true
+        type: string
 
 jobs:
   build:
@@ -14,7 +21,20 @@ jobs:
     - uses: actions/setup-node@v6
       with:
         node-version: 25
-        cache: 'npm'
     - run: npm install
     - run: npm ci
     - run: npm test
+
+  dev-smoke:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-22.04
+    steps:
+    - uses: actions/checkout@v6
+    - uses: actions/setup-node@v6
+      with:
+        node-version: 25
+    - run: npm install
+    - run: npx playwright install --with-deps chromium
+    - run: npm run test:dev
+      env:
+        SPINORAMA_TEST_URL: ${{ inputs.base_url }}

@@ -73,24 +73,20 @@ pub fn write_renderer_stamp(root: &Path, spec: &str) -> Result<()> {
 
 /// Computes the renderer-version spec for image freshness checks.
 ///
-/// The default renderer binary is identified by its content digest,
+/// The renderer binary is identified by its content digest,
 /// so rebuilding `spinorama-render-images` (colormaps, layout,
 /// legends, new chart kinds) invalidates previously rendered images
 /// even when every payload is unchanged. Explicitly chosen binaries
-/// use their path: tests and benches share one checkout.
+/// are hashed too, including builds in a shared Cargo target directory.
 ///
 /// # Errors
 ///
-/// Returns an error when the default renderer binary cannot be read
+/// Returns an error when the renderer binary cannot be read
 /// to compute its digest.
 pub fn renderer_spec(bin: &Path) -> Result<String> {
-    if bin == Path::new(DEFAULT_RENDER_IMAGES_BIN) {
-        let digest = file_digest(bin)
-            .with_context(|| format!("hashing renderer binary {}", bin.display()))?;
-        Ok(format!("sha256:{digest}"))
-    } else {
-        Ok(format!("bin:{}", bin.display()))
-    }
+    let digest =
+        file_digest(bin).with_context(|| format!("hashing renderer binary {}", bin.display()))?;
+    Ok(format!("sha256:{digest}"))
 }
 
 /// Writes one figure as `<dir>/<name>.json` and, for scatter figures,
