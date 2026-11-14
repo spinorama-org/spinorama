@@ -153,6 +153,28 @@ Run `./scripts/check_html.sh` when checking generated HTML. The complete
 project setup and CI may run additional checks for native extensions and
 generated assets.
 
+## Update headphone pages
+
+Run the headphone pipeline from the repository root:
+
+```{.shell}
+./update_headphones.sh dev
+```
+
+The script builds the Rust generators and GPUI renderer, refreshes the ASR
+catalogue, computes EQs and scores, then generates metadata, graph pictures,
+and HTML before deployment. A failed step stops the update.
+
+To rebuild one headphone locally with the existing catalogue:
+
+```{.shell}
+./update_headphones.sh --headphone "Brand Model" --force --skip-catalogue-refresh --skip-deploy
+```
+
+Use `--skip-build` to reuse compiled binaries and `--skip-check-html` to skip
+the Docker-based HTML validator. `--jobs N` controls EQ and graph workers.
+Use `./update_headphones.sh --help` for all options.
+
 ## Build the documentation
 
 Install Quarto separately, then install the Python packages used by the

@@ -43,6 +43,7 @@ path = "src/bin/generate-peq-headphone.rs"
 
 [dependencies]
 anyhow.workspace = true
+annotations_rust.workspace = true
 autoeq-workflow.workspace = true
 base64.workspace = true
 d3rs.workspace = true

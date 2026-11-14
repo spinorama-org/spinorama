@@ -29,6 +29,7 @@ use mimalloc::MiMalloc;
 use rayon::prelude::*;
 use spinorama_generate::filters::apo::parse_apo;
 use spinorama_generate::filters::biquad::apply_peq;
+use spinorama_generate::headphone_meta::{Json, load_catalogue};
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
@@ -342,6 +343,16 @@ fn find_curve(dir: &Path) -> Option<PathBuf> {
 
 fn run_batch(args: &Args) -> Result<()> {
     let metadata = std::fs::read_to_string(&args.metadata_py).unwrap_or_default();
+    // headphones.py imports the catalogue shards instead of containing entries.
+    let catalogue = if args
+        .metadata_py
+        .file_name()
+        .is_some_and(|name| name == "headphones.py")
+    {
+        load_catalogue(args.metadata_py.parent().unwrap_or_else(|| Path::new(".")))?
+    } else {
+        Vec::new()
+    };
     let mut names: Vec<PathBuf> = std::fs::read_dir(&args.headphones_root)
         .with_context(|| format!("reading {}", args.headphones_root.display()))?
         .flatten()
@@ -370,7 +381,21 @@ fn run_batch(args: &Args) -> Result<()> {
             skipped += 1;
             continue;
         };
-        let shape = shape_from_metadata(&metadata, &name).unwrap_or_else(|| "over-ear".to_owned());
+        let entry = catalogue
+            .iter()
+            .find(|(key, _)| key == &name)
+            .map(|(_, info)| info);
+        if entry.is_some_and(Json::is_skipped) {
+            skipped += 1;
+            continue;
+        }
+        let shape = entry
+            .and_then(|info| match info.get("shape") {
+                Some(Json::Str(shape)) => Some(shape.clone()),
+                _ => None,
+            })
+            .or_else(|| shape_from_metadata(&metadata, &name))
+            .unwrap_or_else(|| "over-ear".to_owned());
         let target = target_for_shape(&args.targets_dir, &shape);
         let output_dir = args.eq_root.join(&name);
         work.push(Job {

@@ -128,6 +128,16 @@
       % endif
     </div>
 
+    <form id="graph-options" class="box py-3" aria-label="Graph display options">
+      <div class="field is-grouped is-grouped-centered is-grouped-multiline">
+        <span class="control"><strong>Quick config:</strong></span>
+        <label class="control checkbox"><input type="checkbox" name="trend" checked> Trend lines</label>
+        <label class="control checkbox"><input type="checkbox" name="zones" checked> Recommended zones</label>
+        <label class="control checkbox"><input type="checkbox" name="annotations" checked> Annotations</label>
+      </div>
+    </form>
+    <script type="module" src="/js/graph_options-${versions['CACHE']}${min}.js"></script>
+
     <div class="tab-content">
 
     <div class="tab-pane display:none" id="pane-1">
@@ -146,7 +156,7 @@
         <div class="graph-cell">
           <div class="box has-background-white-bis m-1 p-1">
             <a href="${g_key}/${freq | space2url}.html">
-              <img src="./${g_key}/${freq | space2url}.webp" alt="${freq} graph for ${speaker}" loading="lazy" decoding="async" style="max-width:100%;height:auto">
+              <img src="./${g_key}/${freq | space2url}.webp" alt="${freq} graph for ${speaker}" loading="lazy" decoding="async" width="1200" height="800" style="max-width:100%;height:auto">
             </a>
           </div>
         </div>
@@ -155,7 +165,7 @@
         <div class="graph-cell">
           <div class="box has-background-white-bis m-1 p-1">
             <a href="${g_key}/${contour | unmeltC, space2url}.html">
-              <img src="./${g_key}/${contour | space2url}.webp" alt="${contour} graph for ${speaker}" loading="lazy" decoding="async" style="max-width:100%;height:auto">
+              <img src="./${g_key}/${contour | space2url}.webp" alt="${contour} graph for ${speaker}" loading="lazy" decoding="async" width="1200" height="800" style="max-width:100%;height:auto">
             </a>
           </div>
         </div>
@@ -185,7 +195,7 @@
         <div class="graph-cell">
           <div class="box has-background-white-bis m-1 p-1">
             <a href="${g_key_eq}/${freq | space2url}.html">
-              <img src="./${g_key_eq}/${freq | space2url}.webp" alt="${freq} graph with EQ for ${speaker}" loading="lazy" decoding="async" style="max-width:100%;height:auto">
+              <img src="./${g_key_eq}/${freq | space2url}.webp" alt="${freq} graph with EQ for ${speaker}" loading="lazy" decoding="async" width="1200" height="800" style="max-width:100%;height:auto">
             </a>
           </div>
         </div>
@@ -194,7 +204,7 @@
         <div class="graph-cell">
           <div class="box has-background-white-bis m-1 p-1">
             <a href="${g_key_eq}/${contour | unmeltC, space2url}.html">
-              <img src="./${g_key_eq}/${contour | space2url}.webp" alt="${contour} graph with EQ for ${speaker}" loading="lazy" decoding="async" style="max-width:100%;height:auto">
+              <img src="./${g_key_eq}/${contour | space2url}.webp" alt="${contour} graph with EQ for ${speaker}" loading="lazy" decoding="async" width="1200" height="800" style="max-width:100%;height:auto">
             </a>
           </div>
         </div>
@@ -222,10 +232,10 @@
 %>
         % for freq in g_freq:
         <div class="graph-cell">
-          <img src="./${g_key}/${freq | space2url}.webp" alt="${freq} reference graph for ${speaker}" loading="lazy" decoding="async" style="max-width:100%;height:auto">
+          <img src="./${g_key}/${freq | space2url}.webp" alt="${freq} reference graph for ${speaker}" loading="lazy" decoding="async" width="1200" height="800" style="max-width:100%;height:auto">
         </div>
         <div class="graph-cell">
-          <img src="./${g_key_eq}/${freq | space2url}.webp" alt="${freq} graph with EQ for ${speaker}" loading="lazy" decoding="async" style="max-width:100%;height:auto">
+          <img src="./${g_key_eq}/${freq | space2url}.webp" alt="${freq} graph with EQ for ${speaker}" loading="lazy" decoding="async" width="1200" height="800" style="max-width:100%;height:auto">
         </div>
         % endfor
       </div>

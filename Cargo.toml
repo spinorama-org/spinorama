@@ -10,6 +10,7 @@
 
 [workspace]
 resolver = "3"
+exclude = ["src/spinorama/annotations_rust"]
 members = [
   "crates/spinorama-api", 
   "crates/spinorama-generate"
@@ -21,6 +22,7 @@ edition = "2024"
 
 [workspace.dependencies]
 anyhow = "1"
+annotations_rust = { path = "src/spinorama/annotations_rust", default-features = false }
 autoeq-workflow = { version = "0.5", git = "https://github.com/pierreaubert/autoeq", default-features = false }
 base64 = "0.22"
 d3rs = { package = "gpui-d3rs", version = "0.11", git = "https://github.com/pierreaubert/gpui-toolkit", default-features = false }

@@ -10,13 +10,14 @@
 
     <div class="graph">
       <img src="${graph | space2url}.webp" alt="${graph} graph for ${speaker}"
-           style="max-width:100%;height:auto" decoding="async">
+           width="1200" height="800" style="max-width:100%;height:auto" decoding="async">
     </div>
     <form id="graph-options" class="box" aria-label="Graph display options">
       <div class="field is-grouped is-grouped-multiline">
         <span class="control"><strong>Display:</strong></span>
         <label class="control checkbox"><input type="checkbox" name="trend" checked> Trend lines</label>
-        <label class="control checkbox"><input type="checkbox" name="zones" checked> Zones</label>
+        <label class="control checkbox"><input type="checkbox" name="zones" checked> Recommended zones</label>
+        <label class="control checkbox"><input type="checkbox" name="annotations" checked> Annotations</label>
         <label class="control checkbox"><input type="checkbox" name="grid" checked> Grid</label>
         <label class="control checkbox"><input type="checkbox" name="legend" checked> Legend</label>
         <span class="control">

@@ -33,5 +33,15 @@ describe('graph options', () => {
     it('detects default options', () => {
         expect(isDefaultOptions({ trend: true, zones: true, grid: true, legend: true, smooth: '0', splrange: '' })).toBe(true);
         expect(isDefaultOptions({ trend: false, zones: true, grid: true, legend: true, smooth: '0', splrange: '' })).toBe(false);
+        expect(isDefaultOptions({ trend: true, zones: true, annotations: false, grid: true, legend: true, smooth: '0', splrange: '' })).toBe(false);
+    });
+
+    it('requests annotation visibility from the server', () => {
+        const url = buildGraphUrl(
+            { speaker: 'Example', origin: 'Lab', version: 'test', measurement: 'CEA2034' },
+            { trend: true, zones: true, annotations: false, grid: true, legend: true, smooth: '0' },
+            1400
+        );
+        expect(new URLSearchParams(url.split('?')[1]).get('annotations')).toBe('0');
     });
 });

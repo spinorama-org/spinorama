@@ -811,7 +811,7 @@ fn route(state: &State, request: &Request) -> Response {
     // www host can proxy the original URI straight to this socket,
     // replacing the Python compare service on port 8765.
     // Single-speaker dynamic graph picture with display options
-    // (`trend`, `zones`, `grid`, `legend`, `smooth`, `splrange`):
+    // (`trend`, `zones`, `annotations`, `grid`, `legend`, `smooth`, `splrange`):
     // `/graph-render/graph.webp?measurement&speaker&origin&version&w`.
     let is_graph = segments.as_slice() == ["graph.webp"]
         || segments.as_slice() == ["graph-render", "graph.webp"];
@@ -1211,7 +1211,7 @@ fn openapi_spec() -> String {
             "/demo/v1/speaker/{speaker_name}/version/{speaker_version}/measurements": { "get": demo_operation("Demo measurement names") },
             "/demo/v1/speaker/{speaker_name}/version/{speaker_version}/measurements/{measurement_name}": { "get": demo_operation("Demo measurement data (pristine)") },
             "/v1/validate": { "post": operation("Validate speaker metadata") },
-            "/graph.webp": { "get": { "summary": "Single-speaker graph picture rendered on the fly with display options; query: measurement, speaker/origin/version, w (900|1400), trend, zones, grid, legend (0/1), smooth (octaves 0..1), splrange (dB). Cached by content hash; no key required.", "responses": { "200": { "description": "image/webp" }, "400": { "description": "Invalid parameters" }, "404": { "description": "Graph data not available" }, "503": { "description": "Render budget exhausted (Retry-After)" } } } },
+            "/graph.webp": { "get": { "summary": "Single-speaker graph picture rendered on the fly with display options; query: measurement, speaker/origin/version, w (900|1400), trend, zones, annotations, grid, legend (0/1), smooth (octaves 0..1), splrange (dB). Cached by content hash; no key required.", "responses": { "200": { "description": "image/webp" }, "400": { "description": "Invalid parameters" }, "404": { "description": "Graph data not available" }, "503": { "description": "Render budget exhausted (Retry-After)" } } } },
             "/compare.webp": { "get": { "summary": "Two-speaker overlay picture (one colour per speaker, A solid / B dashed, one marker shape per measurement), rendered from private bundles and cached by content hash; query: measurement, a_speaker/a_origin/a_version, b_speaker/b_origin/b_version, w (900|1400). No key required; the hardened WebP never exposes the underlying data.", "responses": { "200": { "description": "image/webp" }, "400": { "description": "Invalid parameters" }, "404": { "description": "Comparison data not available" }, "503": { "description": "Render budget exhausted (Retry-After)" } } } }
         }
     });

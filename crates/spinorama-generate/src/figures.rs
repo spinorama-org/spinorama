@@ -5,6 +5,8 @@
 use crate::compute::cea2034::{Cea2034, SpinData};
 use crate::measurements::{SplPlane, angle_degrees};
 
+pub(crate) mod cea_overlays;
+
 /// Y axis a trace is plotted against.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Axis {
@@ -607,7 +609,11 @@ fn cea_traces(cea: &Cea2034) -> Vec<Trace> {
 /// Builds one CEA2034 spin figure.
 #[must_use]
 pub fn cea_figure(name: &str, title: String, cea: &Cea2034) -> Figure {
-    Figure::scatter(name, title, cea.freq.clone(), cea_traces(cea))
+    let mut figure = Figure::scatter(name, title, cea.freq.clone(), cea_traces(cea));
+    if matches!(name, "CEA2034" | "CEA2034 Normalized") {
+        cea_overlays::add_overlays(&mut figure);
+    }
+    figure
 }
 
 fn derived_normalized(cea: &Cea2034) -> Cea2034 {
@@ -709,17 +715,15 @@ pub fn common_figures(
         }
     };
     let mut figures = vec![
-        Figure::scatter(
+        cea_figure(
             "CEA2034",
             title("CEA2034"),
-            cea.freq.clone(),
-            cea_traces(cea),
+            cea,
         ),
-        Figure::scatter(
+        cea_figure(
             "CEA2034 Normalized",
             title("CEA2034 Normalized"),
-            normalized.freq.clone(),
-            cea_traces(normalized),
+            normalized,
         ),
         Figure::scatter(
             "On Axis",

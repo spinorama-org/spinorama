@@ -28,6 +28,9 @@ struct BundleTrace {
     axis: Axis,
     x: Vec<f64>,
     y: Vec<f64>,
+    polygon: Option<Vec<[f64; 2]>>,
+    opacity: f64,
+    show_legend: bool,
 }
 
 /// Encodes a figure as a v2 trace-bundle JSON string.
@@ -67,6 +70,14 @@ pub fn to_json_string(figure: &Figure) -> Result<String> {
             axis: trace.axis,
             x: pairs.iter().map(|pair| pair.0).collect(),
             y: pairs.iter().map(|pair| pair.1).collect(),
+            polygon: trace.fill.as_ref().map(|_| {
+                xs.iter()
+                    .zip(&trace.values)
+                    .map(|(x, y)| [*x, *y])
+                    .collect()
+            }),
+            opacity: trace.opacity.unwrap_or(1.0),
+            show_legend: trace.show_legend,
         });
     }
     if traces_in.is_empty() {
@@ -121,6 +132,9 @@ pub fn to_json_string(figure: &Figure) -> Result<String> {
             "color": trace.color,
             "dash": trace.dash,
             "axis": trace.axis.id(),
+            "polygon": trace.polygon,
+            "opacity": trace.opacity,
+            "showlegend": trace.show_legend,
             "y_int16_b64": base64::engine::general_purpose::STANDARD.encode(&bytes),
         }));
     }
@@ -137,6 +151,7 @@ pub fn to_json_string(figure: &Figure) -> Result<String> {
         "y_range": [-45.0, 5.0],
         "y2_range": figure.secondary_axis.as_ref().map_or([-10.0, 40.0], |axis| axis.range),
         "traces": traces,
+        "annotation_requests": crate::figures::cea_overlays::requests(figure),
     }))?)
 }
 

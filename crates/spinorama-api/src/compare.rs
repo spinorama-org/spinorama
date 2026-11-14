@@ -29,8 +29,10 @@ use image::{Rgb, RgbImage, Rgba, RgbaImage};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
+mod annotations;
+
 /// Cache namespace; bump when the rendered picture changes shape.
-pub(crate) const COMPARE_CACHE_VERSION: &str = "compare-v11-connected-phase";
+pub(crate) const COMPARE_CACHE_VERSION: &str = "compare-v12-cea-overlays";
 
 /// Measurements the comparison view may overlay (Python whitelist).
 pub(crate) const ALLOWED_MEASUREMENTS: [&str; 14] = [
@@ -83,6 +85,7 @@ const AXIS: Rgb<u8> = Rgb([120, 120, 120]);
 pub(crate) struct RenderOptions {
     pub trend: bool,
     pub zones: bool,
+    pub annotations: bool,
     pub grid: bool,
     pub legend: bool,
     /// Octave smoothing width (0 = off), applied in log-frequency.
@@ -96,6 +99,7 @@ impl Default for RenderOptions {
         Self {
             trend: true,
             zones: false,
+            annotations: true,
             grid: true,
             legend: true,
             smooth_oct: 0.0,
@@ -123,6 +127,7 @@ impl RenderOptions {
         Self {
             trend: flag("trend", true),
             zones: flag("zones", zones_default),
+            annotations: flag("annotations", true),
             grid: flag("grid", true),
             legend: flag("legend", true),
             smooth_oct,
@@ -137,9 +142,10 @@ impl RenderOptions {
             return String::new();
         }
         format!(
-            "t{}z{}g{}l{}s{:.4}r{}",
+            "t{}z{}a{}g{}l{}s{:.4}r{}",
             u8::from(self.trend),
             u8::from(self.zones),
+            u8::from(self.annotations),
             u8::from(self.grid),
             u8::from(self.legend),
             self.smooth_oct,
@@ -269,6 +275,7 @@ fn is_trend_trace(lower_name: &str) -> bool {
         || lower_name.contains("linear regression")
         || lower_name.contains("regression")
         || lower_name.contains("trend")
+        || lower_name.ends_with(" slope")
 }
 
 /// Whether a trace is drawn without markers: trend/band helpers,
@@ -396,10 +403,15 @@ fn trace_color(trace_name: &str, speaker_idx: usize, speaker_count: usize) -> Rg
 
 /// One decoded bundle trace. The bundle's per-trace `color` is
 /// ignored on purpose: rendering colours by speaker, not measurement.
+#[derive(Default)]
 struct Trace {
     name: String,
     axis: String,
     values: Vec<f64>,
+    polygon: Vec<[f64; 2]>,
+    opacity: f64,
+    dashed: bool,
+    show_legend: bool,
 }
 
 /// One decoded trace bundle.
@@ -410,6 +422,7 @@ struct Bundle {
     y_range: Option<(f64, f64)>,
     y2_range: Option<(f64, f64)>,
     traces: Vec<Trace>,
+    annotation_requests: Vec<annotations_rust::RawRequest>,
 }
 
 fn decode_values(trace: &Value) -> Vec<f64> {
@@ -461,6 +474,19 @@ fn parse_bundle(text: &str) -> Result<Bundle> {
                         .unwrap_or("y")
                         .to_owned(),
                     values: decode_values(trace),
+                    polygon: trace
+                        .get("polygon")
+                        .and_then(|v| serde_json::from_value(v.clone()).ok())
+                        .unwrap_or_default(),
+                    opacity: trace.get("opacity").and_then(Value::as_f64).unwrap_or(1.0),
+                    dashed: trace
+                        .get("dash")
+                        .and_then(Value::as_str)
+                        .is_some_and(|v| v != "solid"),
+                    show_legend: trace
+                        .get("showlegend")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(true),
                 })
                 .collect()
         })
@@ -477,6 +503,10 @@ fn parse_bundle(text: &str) -> Result<Bundle> {
         y_range: range_of(&value, "y_range"),
         y2_range: range_of(&value, "y2_range"),
         traces,
+        annotation_requests: value
+            .get("annotation_requests")
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+            .unwrap_or_default(),
     })
 }
 
@@ -503,10 +533,6 @@ impl Bundle {
                 // Filled bands lose their polygon geometry in trace bundles.
                 // Keep short reference lines such as Midrange Band +3dB.
                 if comparison && name.starts_with("band ") {
-                    return false;
-                }
-                // Slope helpers are never drawn (Python rule).
-                if name.ends_with(" slope") {
                     return false;
                 }
                 let is_zone = name.starts_with("recommended") || name.ends_with(" zone");
@@ -1370,7 +1396,12 @@ fn render_bundles(
     };
     let n_traces = bundles
         .iter()
-        .map(|b| b.visible_traces(opts, bundles.len() > 1).len())
+        .map(|b| {
+            b.visible_traces(opts, bundles.len() > 1)
+                .iter()
+                .filter(|t| t.show_legend)
+                .count()
+        })
         .max()
         .unwrap_or(0);
     #[expect(clippy::cast_precision_loss, reason = "trace counts fit in f64")]
@@ -1444,6 +1475,34 @@ fn render_bundles(
                 plot_x0,
                 s(14.0) + f64::from(title_size) + row as f64 * s(30.0),
                 TEXT,
+            );
+        }
+    }
+    for (speaker_idx, bundle) in bundles.iter().enumerate() {
+        for trace in bundle.visible_traces(opts, bundles.len() > 1) {
+            if trace.polygon.is_empty() {
+                continue;
+            }
+            let range = if trace.axis == "y2" {
+                y2_range.unwrap_or(y_range)
+            } else {
+                y_range
+            };
+            let polygon: Vec<_> = trace
+                .polygon
+                .iter()
+                .map(|p| {
+                    (
+                        x_of(p[0]).clamp(plot_x0, plot_x1),
+                        y_of(p[1], range).clamp(plot_y0, plot_y1),
+                    )
+                })
+                .collect();
+            annotations::fill_zone(
+                &mut img,
+                &polygon,
+                trace_color(&trace.name, speaker_idx, bundles.len()),
+                trace.opacity,
             );
         }
     }
@@ -1556,6 +1615,9 @@ fn render_bundles(
         }
         let dashed = speaker_idx == 1;
         for trace in bundle.visible_traces(opts, bundles.len() > 1) {
+            if !trace.polygon.is_empty() {
+                continue;
+            }
             let range = if trace.axis == "y2" {
                 y2_range.unwrap_or(y_range)
             } else {
@@ -1592,7 +1654,7 @@ fn render_bundles(
                 &mut img,
                 &points,
                 color,
-                dashed || is_phase,
+                dashed || is_phase || trace.dashed,
                 2.0 * f64::from(SS),
             );
             if let Some(marker) = marker_for(&trace.name) {
@@ -1605,6 +1667,23 @@ fn render_bundles(
                 );
             }
         }
+    }
+
+    if opts.annotations
+        && bundles.len() == 1
+        && let Some(font) = &font
+    {
+        annotations::draw_annotations(
+            &mut img,
+            font,
+            bundles[0],
+            opts,
+            (plot_x0, plot_y0, plot_x1, plot_y1),
+            (log_lo, log_hi),
+            y_range,
+            y2_range.unwrap_or(y_range),
+            12.0 * SS as f32,
+        );
     }
 
     if opts.legend
@@ -1631,6 +1710,7 @@ fn render_bundles(
             for (trace_idx, trace) in bundle
                 .visible_traces(opts, bundles.len() > 1)
                 .iter()
+                .filter(|t| t.show_legend)
                 .enumerate()
             {
                 let x = plot_x0 + (trace_idx % 3) as f64 * plot_w / 3.0;
@@ -1842,6 +1922,8 @@ mod tests {
             name: name.to_owned(),
             axis: "y".to_owned(),
             values: vec![0.0; 2],
+            show_legend: true,
+            ..Default::default()
         })
         .collect();
         let opts = RenderOptions::default();
@@ -2064,5 +2146,60 @@ mod tests {
         assert!(!third.cache_hit);
         assert_ne!(third.body, first.body);
         let _ = std::fs::remove_dir_all(&root);
+    }
+    #[test]
+    fn cea_overlay_switches_render_distinct_pictures_and_cache_keys() {
+        let mut value: Value =
+            serde_json::from_str(&bundle_json(&[0, -100, -200, -300], &[0, 100, 200, 300]))
+                .unwrap();
+        let trend_source: Value =
+            serde_json::from_str(&bundle_json(&[300, 100, -100, -500], &[0, 0, 0, 0])).unwrap();
+        let mut trend = trend_source["traces"][0].clone();
+        trend["name"] = serde_json::json!("Listening Window slope");
+        trend["dash"] = serde_json::json!("dash");
+        trend["showlegend"] = serde_json::json!(false);
+        let mut zone = value["traces"][0].clone();
+        zone["name"] = serde_json::json!("recommended LW zone");
+        zone["polygon"] = serde_json::json!([
+            [100.0, -5.0],
+            [12000.0, -10.0],
+            [12000.0, 2.0],
+            [100.0, 2.0]
+        ]);
+        zone["opacity"] = serde_json::json!(0.25);
+        zone["showlegend"] = serde_json::json!(false);
+        value["traces"]
+            .as_array_mut()
+            .unwrap()
+            .extend([trend, zone]);
+        value["annotation_requests"] = serde_json::json!([[
+            "On Axis",
+            3.0,
+            -1.5,
+            "y",
+            "-0.48 db/oct sm 0.50",
+            100,
+            ["top", "upper"],
+            "above"
+        ]]);
+        let bundle = parse_bundle(&value.to_string()).unwrap();
+        let mut pictures = std::collections::HashSet::new();
+        let mut keys = std::collections::HashSet::new();
+        for mask in 0..8 {
+            let query = HashMap::from([
+                ("trend".to_owned(), (mask & 1).to_string()),
+                ("zones".to_owned(), ((mask >> 1) & 1).to_string()),
+                ("annotations".to_owned(), ((mask >> 2) & 1).to_string()),
+            ]);
+            let options = RenderOptions::parse(&query, true);
+            assert!(keys.insert(options.cache_key()));
+            let picture =
+                render_bundles(&[&bundle], &["Example"], "CEA2034", 900, &["Lab"], &options)
+                    .unwrap();
+            assert!(
+                pictures.insert(picture),
+                "each overlay switch changes the rendered picture: {mask}"
+            );
+        }
     }
 }

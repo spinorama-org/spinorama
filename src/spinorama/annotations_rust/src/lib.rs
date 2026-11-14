@@ -1,4 +1,4 @@
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(feature = "python", not(target_arch = "wasm32")))]
 use pyo3::prelude::*;
 #[cfg(target_arch = "wasm32")]
 use serde::Deserialize;
@@ -10,7 +10,8 @@ use wasm_bindgen::prelude::*;
 type Point = (f64, f64);
 type Rect = (f64, f64, f64, f64);
 type Segment = (Point, Point);
-type RawRequest = (
+/// Label identity, anchor, axis, text, priority, lanes, and preferred direction.
+pub type RawRequest = (
     String,
     f64,
     f64,
@@ -531,8 +532,9 @@ fn candidates(
     result
 }
 
+/// Places labels using the original collision-aware layout algorithm.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
-fn place_annotations(
+pub fn place_annotations(
     raw_requests: Vec<RawRequest>,
     width: f64,
     height: f64,
@@ -999,7 +1001,7 @@ fn place_annotations(
     output
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(feature = "python", not(target_arch = "wasm32")))]
 #[pyfunction]
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn c_place_annotations(
@@ -1088,7 +1090,7 @@ pub fn solve_annotations(input: JsValue) -> Result<JsValue, JsValue> {
     serde_wasm_bindgen::to_value(&output).map_err(|error| JsValue::from_str(&error.to_string()))
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(feature = "python", not(target_arch = "wasm32")))]
 #[pymodule]
 fn annotations_rust(_py: Python, module: &Bound<PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(c_place_annotations, module)?)?;

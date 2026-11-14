@@ -41,7 +41,7 @@ const DYNAMIC_MEASUREMENTS = new Set([
 
 const STORAGE_KEY = 'spinorama-graph-options';
 
-const DEFAULTS = { trend: true, zones: true, grid: true, legend: true, smooth: '0', splrange: '' };
+const DEFAULTS = { trend: true, zones: true, annotations: true, grid: true, legend: true, smooth: '0', splrange: '' };
 
 function loadOptions() {
     try {
@@ -74,6 +74,7 @@ export function buildGraphUrl(info, options, width) {
         w: String(width),
         trend: options.trend ? '1' : '0',
         zones: options.zones ? '1' : '0',
+        annotations: (options.annotations ?? true) ? '1' : '0',
         grid: options.grid ? '1' : '0',
         legend: options.legend ? '1' : '0',
         smooth: options.smooth,
@@ -88,6 +89,7 @@ export function isDefaultOptions(options) {
     return (
         options.trend === DEFAULTS.trend &&
         options.zones === DEFAULTS.zones &&
+        (options.annotations ?? true) === DEFAULTS.annotations &&
         options.grid === DEFAULTS.grid &&
         options.legend === DEFAULTS.legend &&
         options.smooth === DEFAULTS.smooth &&
@@ -96,58 +98,77 @@ export function isDefaultOptions(options) {
 }
 
 export function initGraphOptions() {
-    const img = document.querySelector('.graph img');
     const bar = document.getElementById('graph-options');
-    if (!img || !bar) {
-        return;
-    }
-    const info = parseGraphPath(window.location.pathname);
-    if (!info || !DYNAMIC_MEASUREMENTS.has(info.measurement)) {
-        bar.remove();
-        return;
-    }
-    const staticSrc = img.getAttribute('src');
+    if (!bar) return;
+    const targets = [...document.querySelectorAll('.graph img, .graph-grid img')].map(img => {
+        const staticSrc = img.getAttribute('src');
+        const path = new URL(staticSrc, window.location.href).pathname.replace(/\.webp$/, '.html');
+        return { img, staticSrc, info: parseGraphPath(path) };
+    }).filter(target => target.info && DYNAMIC_MEASUREMENTS.has(target.info.measurement));
+    if (!targets.length) { bar.remove(); return; }
     const options = loadOptions();
     const fields = {
         trend: bar.querySelector('[name="trend"]'),
         zones: bar.querySelector('[name="zones"]'),
+        annotations: bar.querySelector('[name="annotations"]'),
         grid: bar.querySelector('[name="grid"]'),
         legend: bar.querySelector('[name="legend"]'),
         smooth: bar.querySelector('[name="smooth"]'),
         splrange: bar.querySelector('[name="splrange"]'),
     };
-    for (const key of ['trend', 'zones', 'grid', 'legend']) {
+    for (const key of ['trend', 'zones', 'annotations', 'grid', 'legend']) {
         if (fields[key]) fields[key].checked = options[key];
     }
     if (fields.smooth) fields.smooth.value = options.smooth;
     if (fields.splrange) fields.splrange.value = options.splrange;
 
+    let observer;
+    const visible = new Set();
+    const updateImage = ({ img, staticSrc, info }) => {
+        // Callouts exist on the two spin views; other images need no new render.
+        const effective = info.measurement.startsWith('CEA2034') ? options : { ...options, annotations: true };
+        const source = isDefaultOptions(effective) ? staticSrc : buildGraphUrl(info, effective, 1400);
+        if (img.getAttribute('src') === source) return;
+        img.onerror = source === staticSrc ? null : () => {
+            img.onerror = null;
+            img.src = staticSrc;
+        };
+        img.src = source;
+    };
     const apply = () => {
-        for (const key of ['trend', 'zones', 'grid', 'legend']) {
-            options[key] = fields[key] ? fields[key].checked : DEFAULTS[key];
+        for (const key of ['trend', 'zones', 'annotations', 'grid', 'legend']) {
+            if (fields[key]) options[key] = fields[key].checked;
         }
-        options.smooth = fields.smooth ? fields.smooth.value : '0';
-        options.splrange = fields.splrange ? fields.splrange.value : '';
+        if (fields.smooth) options.smooth = fields.smooth.value;
+        if (fields.splrange) options.splrange = fields.splrange.value;
         try {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(options));
         } catch {
             // storage unavailable: options last for this page only
         }
-        if (isDefaultOptions(options)) {
-            img.src = staticSrc;
-            return;
+        for (const target of targets) {
+            if (!observer || visible.has(target.img)) updateImage(target);
         }
-        const url = buildGraphUrl(info, options, 1400);
-        img.onerror = () => {
-            img.onerror = null;
-            img.src = staticSrc;
-        };
-        img.src = url;
     };
+
+    if (typeof IntersectionObserver !== 'undefined' && targets.length > 1) {
+        const byImage = new Map(targets.map(target => [target.img, target]));
+        observer = new IntersectionObserver(entries => {
+            for (const entry of entries) {
+                if (entry.isIntersecting) {
+                    visible.add(entry.target);
+                    updateImage(byImage.get(entry.target));
+                } else {
+                    visible.delete(entry.target);
+                }
+            }
+        });
+        for (const { img } of targets) observer.observe(img);
+    }
 
     bar.addEventListener('change', apply);
     bar.querySelector('[data-action="reset"]')?.addEventListener('click', () => {
-        for (const key of ['trend', 'zones', 'grid', 'legend']) {
+        for (const key of ['trend', 'zones', 'annotations', 'grid', 'legend']) {
             if (fields[key]) fields[key].checked = DEFAULTS[key];
         }
         if (fields.smooth) fields.smooth.value = DEFAULTS.smooth;

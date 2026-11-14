@@ -56,7 +56,7 @@ def find_original_speaker_name(sanitized_name):
 
 SITEPROD = "https://www.spinorama.org"
 SITEDEV = "https://dev.spinorama.org"
-CACHE_VERSION = "v6"
+CACHE_VERSION = "v7"
 
 
 def get_files(dir: str, ext: str) -> list[str]:
@@ -328,7 +328,10 @@ def generate_measurement(
         for graph_name in kind:
             graph_filename = "{0}/{1}/{2}.html".format(dirname, key, graph_name)
             graph_deps = [
+                "./scripts/generate_html.py",
                 "./src/website/graph.html",
+                "./src/website/head.html",
+                *glob("./src/website/*.js"),
                 "./src/website/nav_simple.html",
                 "./src/website/banner.html",
                 "./src/website/utils.py",

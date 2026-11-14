@@ -78,7 +78,12 @@ fn common_figures_carry_the_six_cea_traces() {
             "Estimated In-Room Response Normalized"
         ]
     );
-    let trace_names: Vec<&str> = figures[0].traces.iter().map(|t| t.name.as_str()).collect();
+    let trace_names: Vec<&str> = figures[0]
+        .traces
+        .iter()
+        .filter(|t| t.show_legend)
+        .map(|t| t.name.as_str())
+        .collect();
     assert_eq!(
         trace_names,
         [

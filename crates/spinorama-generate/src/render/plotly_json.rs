@@ -248,6 +248,7 @@ fn scatter_json_string(figure: &Figure) -> Result<String> {
             "zeroline": false,
         });
     }
+    layout["annotations"] = json!(crate::figures::cea_overlays::layout_annotations(figure));
     Ok(serde_json::to_string(
         &json!({"data": data, "layout": layout}),
     )?)

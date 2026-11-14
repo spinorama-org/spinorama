@@ -1,0 +1,15 @@
+{
+  "curve_name": "Estimated In-Room Response",
+  "fitness": "SpeakerScore",
+  "generator": "spinorama-generate generate-peq (Rust AutoEQ)",
+  "max_db": 3.0,
+  "max_freq": 20000.0,
+  "max_q": 3.0,
+  "maxeval": 10000,
+  "min_db": -3.0,
+  "min_freq": 50.0,
+  "min_q": 0.25,
+  "num_filters": 7,
+  "sample_rate": 48000.0,
+  "seed": 42
+}
