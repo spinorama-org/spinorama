@@ -37,12 +37,11 @@ RUN_TARGET=ovhspin:$RUNDIR
 # Older runs could leave $RUNDIR/etc as a regular file (rsync created
 # it when the directory did not exist yet); move it aside.
 ssh ovhspin "mkdir -p '$DATA_DIR/assets/headphones' '$DATA_DIR/speakers' \
-    '$DATA_DIR/headphones-graphs' '$RUNDIR/datas' '$RUNDIR/scripts' \
-    '$RUNDIR/src/spinorama' '$RUNDIR/cache/compare'; \
+    '$DATA_DIR/headphones-graphs' '$RUNDIR/datas'; \
     if [ -f '$RUNDIR/etc' ]; then mv '$RUNDIR/etc' '$RUNDIR/etc.conf.bak'; fi; \
     mkdir -p '$RUNDIR/etc'"
 
-rsync -arv ./scripts/spinorama-api-start.sh requirements-render.txt $RUN_TARGET
+rsync -arv ./scripts/spinorama-api-start.sh $RUN_TARGET
 rsync -arv ./datas/origins.toml $RUN_TARGET/datas/
 rsync -arv ./dist/json/metadata*.json* ./dist/json/headphone*.json* \
     ./dist/json/eqdata.json* ./dist/json/headphone_eqdata.json* $DATA_TARGET/assets/
@@ -51,9 +50,6 @@ rsync -arv ./datas/headphones/ $DATA_TARGET/assets/headphones/
 # renderer read them, the public website never does).
 rsync -arv ./dist-private/speakers/ $DATA_TARGET/speakers/
 rsync -arv ./dist-private/headphones/ $DATA_TARGET/headphones-graphs/ 2>/dev/null || true
-rsync -arv ./scripts/compare_render_server.py $RUN_TARGET/scripts/
-rsync -arv ./src/spinorama/__init__.py ./src/spinorama/_logging.py ./src/spinorama/image_export.py ./src/spinorama/compare_render.py $RUN_TARGET/src/spinorama/
-rsync -arv ./conf/etc/systemd/spinorama-render.service $RUN_TARGET/etc/
 rsync ./conf/etc/supervisor/conf.d/spinorama-app.conf $RUN_TARGET/etc/
 rsync ./conf/etc/nginx/sites-available/spinorama-api "$RUN_TARGET/etc/spinorama-api.nginx"
 rsync ./conf/etc/nginx/sites-available/spinorama-prod "$RUN_TARGET/etc/spinorama-prod.nginx"
@@ -80,6 +76,5 @@ echo "sudo nginx -t"
 echo "sudo supervisorctl restart spinorama-api"
 echo "sudo nginx -s reload"
 echo "4. Set SPINORAMA_FINGERPRINT_SECRET in the API service environment (keep it stable and private), then restart the API."
-echo "5. Compare renderer: pip install -r requirements-render.txt into its venv, install conf/etc/systemd/spinorama-render.service, systemctl enable --now spinorama-render"
 
 exit 0;

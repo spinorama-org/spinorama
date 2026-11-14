@@ -340,7 +340,7 @@ def cache_load_seq(filters, smoke_test, cache_dir: str | None = None, speakers=N
     if len(cache_files) == 0:
         cache_files = glob("../{}/*.h5".format(CACHE_DIR))
     if len(cache_files) == 0:
-        print("Cannot find cache directory or files! Did you run ./scripts/generate_graphs.py ?")
+        print("No legacy HDF5 cache found; current generators read measurement files directly.")
         return df_all
     count = 0
     print("Found {} cache files".format(len(cache_files)))
@@ -495,7 +495,7 @@ def cache_find_complete(
     one-time verification of a previous build's output. ``wanted`` maps each
     speaker to its ``{mversion: origin}`` versions; a version counts as
     complete when both its plain and ``_eq`` entries exist under its origin,
-    mirroring ``speaker_cache_complete`` in ``generate_graphs``.
+    checking the required outputs for the legacy HDF5 cache.
     """
     resolved = _resolve_cache_dir(cache_dir)
     found: set[tuple[str, str]] = set()

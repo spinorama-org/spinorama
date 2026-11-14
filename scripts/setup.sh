@@ -50,7 +50,7 @@ elif test "$OS" = "Darwin"; then
     PYTHON="$(brew --prefix "python@${PYVERSION}")/bin/python${PYVERSION}"
 fi
 
-export PYTHONPATH="${ROOT_DIR}/src:${ROOT_DIR}/src/website"
+export PYTHONPATH="${ROOT_DIR}:${ROOT_DIR}/src:${ROOT_DIR}/src/website:${ROOT_DIR}/scripts"
 
 # python section
 if ! command -v "${PYTHON}" >/dev/null 2>&1; then
@@ -77,22 +77,8 @@ source ./.venv/bin/activate
 PYTHON="${ROOT_DIR}/.venv/bin/python"
 echo "Using $("${PYTHON}" --version) at ${PYTHON}"
 
-# setup.py is invoked directly below, so PEP 517 build-system requirements are
-# not installed in an isolated build environment for us. Python 3.12 venvs do
-# not include setuptools by default.
-"${PYTHON}" -m pip install -U pip setuptools wheel
-
-ARCH=$(uname -a | awk '{print $NF}')
-if test "$OS" = "Darwin"  -a "$ARCH" = "arm64" ; then
-    # ack to install tables on arm
-    echo pip install git+https://github.com/PyTables/PyTables.git@master#egg=tables
-fi
-"${PYTHON}" -m pip install -U -r requirements.txt
-"${PYTHON}" -m pip install -U -r requirements-test.txt
-"${PYTHON}" -m pip install -U -r requirements-dev.txt
-"${PYTHON}" -m pip install -U -r requirements-api.txt
-"${PYTHON}" -m pip install -U -r requirements-meta.txt
-"${PYTHON}" -m pip install -U -r requirements-scrape.txt
+"${PYTHON}" -m pip install -U pip
+"${PYTHON}" -m pip install -U -r "${ROOT_DIR}/requirements.txt"
 
 # node section
 npm install .
@@ -106,26 +92,6 @@ npm install .
 # create some directories
 mkdir -p build dist
 
-# compile cython
-cd "${ROOT_DIR}/src/spinorama/compute_scores_cython" && \
-    PYTHONPATH=../../.. "${PYTHON}" setup.py build_ext --inplace && \
-    rm -f compute_scores_cython.so && \
-    SO_FILE="compute_scores_cython$("${PYTHON}" -c 'import sysconfig; print(sysconfig.get_config_var("EXT_SUFFIX"))')" && \
-    ln -s "$SO_FILE" compute_scores_cython.so && \
-    cd ../../..
-
-# Compile and install Rust extensions into the active virtual environment.
-"${PYTHON}" -m maturin develop --release \
-    --manifest-path "${ROOT_DIR}/src/spinorama/compute_scores_rust/Cargo.toml"
-"${PYTHON}" -m maturin develop --release \
-    --manifest-path "${ROOT_DIR}/src/spinorama/annotations_rust/Cargo.toml"
-
-# Do not silently fall back to the Python implementations after setup.
-"${PYTHON}" - <<'PY'
-import annotations_rust
-import compute_scores_rust
-from spinorama.plot import annotations
-
-assert annotations._c_place_annotations is not None
-print("Rust extensions installed successfully")
-PY
+# Build the native generators and API. Python reference extensions are optional
+# and can be installed separately with make python-reference.
+cargo build --locked --release --workspace

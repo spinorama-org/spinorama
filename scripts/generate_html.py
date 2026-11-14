@@ -390,13 +390,11 @@ def generate_speaker(
                         speaker_name, key_error
                     )
                 )
-                print("Maybe you forgot to cache the computations? Try running:")
+                print("Regenerate graph payloads and metadata with:")
                 print(
-                    "./scripts/generate_graphs.py --speaker='{}' --update-cache".format(
-                        speaker_name
-                    )
+                    f'make graphs SPEAKER="{speaker_name}"'
                 )
-                print("./scripts/generate_meta.py")
+                print("./target/release/generate-meta --metadata-dir datas/measurements")
 
 
 def generate_speakers(mako, dataframe, meta, site, use_search, versions):

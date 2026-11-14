@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools", "wheel", "Cython"]
+requires = ["setuptools", "wheel"]
 
 [project]
 name = "spinorama"
@@ -67,11 +67,6 @@ lint.unfixable = []
 [tool.sonar]
 projectKey = "spinorama"
 sources = "src"
-
-[tool.pytest.ini_options]
-markers = [
-    "qt: marks tests that use Qt",
-]
 
 [tool.pyrefly]
 project-includes = [

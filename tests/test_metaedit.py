@@ -1,57 +1,379 @@
-from __future__ import annotations
+"""GPUI editor behavior and persistent-session tests."""
 
-# ruff: noqa: S101 - allow asserts in tests
+from typing import List
 
+import copy
+import json
 import os
-import io
-import re
-import ast
-import types
-import importlib
+from queue import Queue
 import subprocess
 import sys
-import json
-from pathlib import Path
-from typing import Any, Dict, List, TYPE_CHECKING, cast
+from threading import Thread
+import tomllib
 
 import pytest
-from PySide6.QtCore import Qt, QDate, QSize
-from PySide6.QtGui import QPixmap, QColor
-from PySide6.QtWidgets import (
-    QApplication,
-    QComboBox,
-    QLineEdit,
-    QDateEdit,
-    QFormLayout,
-    QToolButton,
-    QWidget,
-    QFrame,
-    QLabel,
-)
+from gpui_toolkit import Event, SessionContext
+from gpui_toolkit.effects import EffectResult, EffectStatus
 
-pytestmark = pytest.mark.qt
-
-if TYPE_CHECKING:
-    from pytest import MonkeyPatch
+from metaedit.app import MetadataApp
+from metaedit.editor import EditorState
 
 
-# --------------------
-# Shared helpers
-# --------------------
+@pytest.fixture
+def context(monkeypatch):
+    messages = []
+    context = SessionContext(capabilities=("events", "patches", "effects"))
+    monkeypatch.setattr(context, "send", messages.append)
+    monkeypatch.setattr(context, "_write_locked", messages.append)
+    return context, messages
 
 
-def _pick_sample_speaker():
-    from datas.speaker import speakers_info
+def send(app, context, action, node_id="button", value=None):
+    event = Event(
+        f"event-{node_id}",
+        1,
+        node_id,
+        "change" if action == "edit" else "click",
+        action,
+        {"value": value},
+    )
+    app.on_action(event, context)
 
-    for key, val in speakers_info.items():
-        if not isinstance(val, dict):
-            continue
-        if not val.get("brand") or not val.get("model"):
-            continue
-        measurements = val.get("measurements")
-        if isinstance(measurements, dict) and measurements:
-            return key, val
-    pytest.skip("No suitable speaker found in local metadata DB")
+
+def find_node(spec, id):
+    if isinstance(spec, dict):
+        if spec.get("id") == id:
+            return spec
+        for value in spec.values():
+            found = find_node(value, id)
+            if found:
+                return found
+    elif isinstance(spec, list):
+        for value in spec:
+            found = find_node(value, id)
+            if found:
+                return found
+    return None
+
+
+@pytest.mark.parametrize("date", ["2024", "20240000", "20240131", "2024xxxx"])
+def test_gpui_edit_review_and_save(repository, metadata, context, date):
+    metadata["measurements"]["vendor"]["review_published"] = date
+    path = repository.save(metadata)
+    app = MetadataApp(repository, speaker=metadata["name"])
+    spec = app.to_spec()
+    assert spec["miniapp"]["with_theme"]
+    prefix = app.editor.active_id
+    assert (
+        find_node(spec, f"{prefix}-notes")["value"] == metadata["measurements"]["vendor"]["notes"]
+    )
+    ctx, messages = context
+    send(app, ctx, "next")
+    assert app.stage == 2
+    assert tomllib.loads(app.editor.preview()) == metadata
+    send(app, ctx, "back")
+    send(app, ctx, "edit", f"{prefix}-notes", "Edited in GPUI\nSecond line")
+    send(app, ctx, "next")
+    send(app, ctx, "preview-diff")
+    assert "Edited in GPUI\\nSecond line" in app.editor.diff()
+    send(app, ctx, "copy")
+    effect = messages[-1]
+    assert effect["effect"] == "clipboard_write"
+    assert (
+        tomllib.loads(effect["arguments"]["text"])["measurements"]["vendor"]["notes"]
+        == "Edited in GPUI\nSecond line"
+    )
+    send(app, ctx, "save")
+    expected = copy.deepcopy(metadata)
+    expected["measurements"]["vendor"]["notes"] = "Edited in GPUI\nSecond line"
+    assert tomllib.loads(path.read_text()) == expected
+    assert app.message_variant == "success"
+
+
+def test_measurement_rename_updates_default_and_other_versions(repository, metadata):
+    repository.save(metadata)
+    editor = EditorState(repository)
+    editor.load(metadata["name"])
+    editor.active.key = "renamed"
+    exported = editor.export()
+    assert exported["default_measurement"] == "renamed"
+    assert exported["measurements"]["renamed"] == metadata["measurements"]["vendor"]
+    assert exported["measurements"]["other"] == metadata["measurements"]["other"]
+    editor.active.key = "other"
+    with pytest.raises(ValueError, match="unique"):
+        editor.export()
+
+
+def test_review_keys_and_multiline_notes_survive_edits(repository, metadata):
+    metadata["measurements"]["vendor"]["reviews"] = {"asr": "https://example.com/review"}
+    repository.save(metadata)
+    editor = EditorState(repository)
+    editor.load(metadata["name"])
+    review = editor.active.reviews[0]
+    review.key = "updated"
+    assert editor.export()["measurements"]["vendor"]["reviews"] == {"updated": review.url}
+    editor.add_review(editor.active, "updated", "https://example.com/duplicate")
+    with pytest.raises(ValueError, match="unique"):
+        editor.export()
+
+
+def test_add_remove_and_validation_keep_draft(repository, metadata, context):
+    path = repository.save(metadata)
+    before = path.read_text()
+    app = MetadataApp(repository, speaker=metadata["name"])
+    app.to_spec()
+    ctx, _ = context
+    send(app, ctx, "add-measurement")
+    added = app.editor.active_id
+    send(app, ctx, "edit", f"{added}-key", "new")
+    send(app, ctx, "edit", f"{added}-origin", "ASR")
+    send(app, ctx, "edit", f"{added}-format", "klippel")
+    assert app.editor.active.data["quality"] == "high"
+    send(app, ctx, "remove-measurement")
+    assert len(app.editor.measurements) == 2
+    prefix = app.editor.active_id
+    send(app, ctx, "edit", f"{prefix}-parameters-mean_min", "bad")
+    send(app, ctx, "next")
+    assert app.stage == 1
+    assert app.message_variant == "error"
+    assert path.read_text() == before
+
+
+def test_gll_defaults_and_active_type_keep_values(repository, metadata, context):
+    repository.save(metadata)
+    app = MetadataApp(repository, speaker=metadata["name"])
+    app.to_spec()
+    ctx, _ = context
+    prefix = app.editor.active_id
+    send(app, ctx, "edit", f"{prefix}-data_acquisition-via", "GLL")
+    assert app.editor.active.data["data_acquisition"]["distance"] == 10
+    assert app.editor.active.data["data_acquisition"]["max_valid_freq"] == 20000
+    send(app, ctx, "edit", "speaker-type", "passive")
+    assert not find_node(app.to_spec(), f"{prefix}-specifications-sensitivity")["disabled"]
+    send(app, ctx, "edit", f"{prefix}-specifications-sensitivity", 85.5)
+    send(app, ctx, "edit", "speaker-type", "active")
+    assert find_node(app.to_spec(), f"{prefix}-specifications-sensitivity")["disabled"]
+    assert app.editor.export()["measurements"]["vendor"]["specifications"]["sensitivity"] == 85.5
+
+
+def test_search_and_new_speaker_flow(repository, metadata, context):
+    repository.save(metadata)
+    app = MetadataApp(repository)
+    app.to_spec()
+    ctx, messages = context
+    send(app, ctx, "edit", "speaker-search", "monitor")
+    assert messages[-1]["ops"][0]["value"][-1]["value"] == metadata["name"]
+    send(app, ctx, "select-speaker", "speaker-selection", metadata["name"])
+    send(app, ctx, "next")
+    assert app.editor.name == metadata["name"]
+    send(app, ctx, "start-over")
+    send(app, ctx, "mode", value=1)
+    send(app, ctx, "edit", "new-brand", "New")
+    send(app, ctx, "edit", "new-model", "Monitor")
+    send(app, ctx, "next")
+    assert app.editor.name == "New Monitor"
+    prefix = app.editor.active_id
+    for id, value in [("key", "vendor"), ("origin", "ASR"), ("format", "klippel")]:
+        send(app, ctx, "edit", f"{prefix}-{id}", value)
+    send(app, ctx, "edit", "speaker-skip", True)
+    send(app, ctx, "next")
+    send(app, ctx, "save")
+    assert repository.load("New Monitor")["skip"] is True
+
+
+def test_picture_effect_and_clipboard_failure(repository, metadata, context, tmp_path):
+    repository.save(metadata)
+    app = MetadataApp(repository, speaker=metadata["name"], pictures_dir=tmp_path / "pictures")
+    app.to_spec()
+    ctx, messages = context
+    send(app, ctx, "choose-picture")
+    assert messages[-1]["effect"] == "open_file"
+    request = messages[-1]["request_id"]
+    source = tmp_path / "test.png"
+    source.write_bytes(b"test picture")
+    app.on_effect_result(
+        request, EffectResult(request, EffectStatus.SUCCEEDED, {"paths": [str(source)]}), ctx
+    )
+    assert app.editor.picture.name == "Example Monitor.png"
+    assert app.editor.picture.read_bytes() == source.read_bytes()
+    assert "picture" not in app.editor.export()
+    app.on_effect_result(
+        "copy:failure",
+        EffectResult("copy:failure", EffectStatus.DENIED, error="Clipboard denied"),
+        ctx,
+    )
+    assert app.message_variant == "error"
+    assert app.message == "Clipboard denied"
+
+
+def test_stale_measurement_input_cannot_change_another_speaker(repository, metadata, context):
+    repository.save(metadata)
+    app = MetadataApp(repository, speaker=metadata["name"])
+    app.to_spec()
+    old = app.editor.active_id
+    app.editor.create("Different", "Speaker")
+    app.to_spec()
+    send(app, context[0], "edit", f"{old}-notes", "Stale edit")
+    assert "notes" not in app.editor.active.data
+
+
+def test_gpui_session_roundtrip(repository, metadata):
+    path = repository.save(metadata)
+    env = os.environ.copy()
+    env["GPUI_TOOLKIT_SESSION"] = "1"
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "metaedit.app",
+            "--metadata-dir",
+            str(repository.directory),
+            "--speaker",
+            metadata["name"],
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=env,
+    )
+    messages = Queue()
+
+    def read_output():
+        for line in process.stdout:
+            messages.put(json.loads(line))
+
+    reader = Thread(target=read_output, daemon=True)
+    reader.start()
+
+    def write(message):
+        process.stdin.write(json.dumps(message) + "\n")
+        process.stdin.flush()
+
+    def receive(kind):
+        while True:
+            message = messages.get(timeout=15)
+            assert message["type"] != "error", message
+            if message["type"] == kind:
+                return message
+
+    try:
+        write(
+            {
+                "type": "initialize",
+                "session_version": 1,
+                "capabilities": ["events", "patches", "effects"],
+            }
+        )
+        receive("ready")
+        snapshot = receive("snapshot")["app_ir"]
+        assert snapshot["miniapp"]["title"] == "Spinorama Metadata"
+        prefix = find_node(snapshot, "active-measurement")["value"]
+        write(
+            {
+                "type": "event",
+                "id": "edit",
+                "sequence": 1,
+                "node_id": f"{prefix}-notes",
+                "event": "change",
+                "action": "edit",
+                "payload": {"value": "Session edit"},
+            }
+        )
+        write(
+            {
+                "type": "event",
+                "id": "review",
+                "sequence": 2,
+                "node_id": "button",
+                "event": "click",
+                "action": "next",
+                "payload": {},
+            }
+        )
+        receive("patch")
+        write(
+            {
+                "type": "event",
+                "id": "save",
+                "sequence": 3,
+                "node_id": "button",
+                "event": "click",
+                "action": "save",
+                "payload": {},
+            }
+        )
+        receive("patch")
+        assert tomllib.loads(path.read_text())["measurements"]["vendor"]["notes"] == "Session edit"
+        write({"type": "shutdown"})
+        process.wait(timeout=10)
+        assert process.returncode == 0, process.stderr.read()
+    finally:
+        if process.poll() is None:
+            process.terminate()
+        process.communicate(timeout=10)
+
+
+@pytest.mark.parametrize("stage", [0, 1, 2, "error"])
+def test_pypi_native_host_validates_each_screen(repository, metadata, tmp_path, stage):
+    repository.save(metadata)
+    script = tmp_path / "native_metadata_screen.py"
+    script.write_text(
+        "from pathlib import Path\n"
+        "from metaedit.app import MetadataApp\n"
+        "from metaedit.storage import MetadataRepository\n"
+        f"app = MetadataApp(MetadataRepository(Path({str(repository.directory)!r})), speaker={metadata['name']!r})\n"
+        f"app.stage = {1 if stage == 'error' else stage}\n"
+        + (
+            "app.message = 'Metadata validation failed'\napp.message_variant = 'error'\n"
+            if stage == "error"
+            else ""
+        )
+        + "app.run()\n"
+    )
+    env = os.environ.copy()
+    env["GPUI_TOOLKIT_VALIDATE_ONLY"] = "1"
+    env["GPUI_PYTHON"] = sys.executable
+    env.pop("GPUI_TOOLKIT_SESSION", None)
+    env.pop("GPUI_TOOLKIT_DUMP_IR", None)
+    result = subprocess.run(
+        [sys.executable, str(script)],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "validated Python GPUI app" in result.stdout
+
+
+def test_cli_preserves_catalogue_when_native_host_restarts_python(repository, metadata):
+    repository.save(metadata)
+    env = os.environ.copy()
+    env["GPUI_TOOLKIT_VALIDATE_ONLY"] = "1"
+    env.pop("GPUI_TOOLKIT_SESSION", None)
+    env.pop("GPUI_TOOLKIT_DUMP_IR", None)
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "metaedit.app",
+            "--metadata-dir",
+            str(repository.directory),
+            "--speaker",
+            metadata["name"],
+            "--generate-graph",
+            str(repository.validator),
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "validated Python GPUI app" in result.stdout
 
 
 def _keys_in_order(keys: List[str], ordered_subset: List[str]) -> bool:
@@ -64,480 +386,10 @@ def _keys_in_order(keys: List[str], ordered_subset: List[str]) -> bool:
     return all(positions[present[i]] < positions[present[i + 1]] for i in range(len(present) - 1))
 
 
-def _to_float(val):
-    if val is None:
-        return None
-    try:
-        return float(val)
-    except Exception:
-        return None
-
-
-def _normalize_expected_export(raw: Dict[str, Any]) -> Dict[str, Any]:
-    # Build the expected export JSON from the raw metadata, matching the app's export shape
-    from copy import deepcopy
-
-    data: Dict[str, Any] = deepcopy(raw)
-
-    # Convert legacy 'review' to 'reviews'
-    measurements: Dict[str, Any] = (
-        cast(Dict[str, Any], data.get("measurements"))
-        if isinstance(data.get("measurements"), dict)
-        else {}
-    )
-    for k, m in list(measurements.items()):
-        if isinstance(m, dict) and ("review" in m) and ("reviews" not in m):
-            rv = m.get("review")
-            m.pop("review", None)
-            m["reviews"] = {"default": rv} if isinstance(rv, str) else {}
-
-    expected: Dict[str, Any] = {
-        "brand": data.get("brand"),
-        "model": data.get("model"),
-        # optional top-level fields included only when present (export excludes None)
-        "measurements": {},
-    }
-    for key in ("type", "shape", "price", "amount", "default_measurement"):
-        v = data.get(key)
-        if v is None:
-            continue
-        if isinstance(v, str) and not v.strip():
-            continue
-        expected[key] = v
-
-    # Measurements mapping normalization
-    for meas_key, m in measurements.items():
-        if not isinstance(m, dict):
-            # skip non-dicts
-            continue
-        em: Dict[str, Any] = {}
-        # Simple fields (mirror UI defaults)
-        # Empty text fields should be omitted in export, so keep raw values here and prune later
-        em["origin"] = m.get("origin")
-        em["format"] = m.get("format")
-        em["quality"] = m.get("quality")
-        em["symmetry"] = m.get("symmetry") if m.get("symmetry") is not None else "none"
-        rp = m.get("review_published")
-        # Keep only valid 8-digit date; otherwise leave unset so it gets pruned
-        if isinstance(rp, str) and len(rp) == 8 and rp.isdigit():
-            em["review_published"] = rp
-        else:
-            em["review_published"] = None
-        # Reviews
-        reviews = m.get("reviews")
-        em["reviews"] = reviews if isinstance(reviews, dict) else {}
-        # Data Acquisition
-        da: Dict[str, Any] = (
-            cast(Dict[str, Any], m.get("data_acquisition"))
-            if isinstance(m.get("data_acquisition"), dict)
-            else {}
-        )
-        em["data_acquisition"] = {
-            "via": (cast(str, da.get("via")) if isinstance(da.get("via"), str) else None),
-            "distance": _to_float(da.get("distance")),
-            "signal": (cast(str, da.get("signal")) if isinstance(da.get("signal"), str) else None),
-            "resolution": _to_float(da.get("resolution")),
-            "min_valid_freq": _to_float(da.get("min_valid_freq")),
-            "max_valid_freq": _to_float(da.get("max_valid_freq")),
-            # UI default: unchecked => False (kept in export)
-            "air_absorbtion": bool(da.get("air_absorbtion"))
-            if da.get("air_absorbtion") is not None
-            else False,
-            "notes": (cast(str, da.get("notes")) if isinstance(da.get("notes"), str) else None),
-        }
-
-        # Drop DA block if effectively empty (all None/empty/False)
-        def _block_empty(d: Dict[str, Any]) -> bool:
-            for _k, _v in d.items():
-                if _v is None:
-                    continue
-                if isinstance(_v, bool) and _v is False:
-                    continue
-                if isinstance(_v, str) and _v.strip() == "":
-                    continue
-                return False
-            return True
-
-        if _block_empty(em["data_acquisition"]):
-            em["data_acquisition"] = None
-        # Extras
-        ex: Dict[str, Any] = (
-            cast(Dict[str, Any], m.get("extras")) if isinstance(m.get("extras"), dict) else {}
-        )
-        em["extras"] = {
-            # UI default is unchecked -> False (kept)
-            "is_equed": bool(ex.get("is_equed")) if ex.get("is_equed") is not None else False,
-            "score_penalty": _to_float(ex.get("score_penalty")),
-        }
-        if _block_empty(em["extras"]):
-            em["extras"] = None
-        # Specifications (support nested SPL)
-        sp: Dict[str, Any] = (
-            cast(Dict[str, Any], m.get("specifications"))
-            if isinstance(m.get("specifications"), dict)
-            else {}
-        )
-        size: Dict[str, Any] = (
-            cast(Dict[str, Any], sp.get("size")) if isinstance(sp.get("size"), dict) else {}
-        )
-        spl = cast(Dict[str, Any], sp.get("SPL")) if isinstance(sp.get("SPL"), dict) else None
-        spl_peak = sp.get("spl_peak")
-        spl_long = sp.get("spl_long_term")
-        if spl is not None:
-            if spl_peak is None:
-                spl_peak = spl.get("peak")
-            if spl_long is None:
-                spl_long = spl.get("continuous")
-        em["specifications"] = {
-            "sensitivity": _to_float(sp.get("sensitivity")),
-            "impedance": _to_float(sp.get("impedance")),
-            "weight": _to_float(sp.get("weight")),
-            "size": {
-                "height": _to_float(size.get("height")),
-                "width": _to_float(size.get("width")),
-                "depth": _to_float(size.get("depth")),
-            },
-            "spl_peak": _to_float(spl_peak),
-            "spl_long_term": _to_float(spl_long),
-        }
-        expected["measurements"][meas_key] = em
-
-    # Apply the same pruning rule as the application export: remove empty strings and empty dicts
-    from metaedit.models import prune_empty
-
-    return prune_empty(expected)
-
-
-def _minimal_valid_entry(brand: str, model: str) -> Dict[str, Any]:
-    return {
-        "brand": brand,
-        "model": model,
-        "type": "passive",
-        "shape": "bookshelves",
-        "default_measurement": "m1",
-        "measurements": {
-            "m1": {
-                "origin": "Misc",
-                "format": "klippel",
-            }
-        },
-    }
-
-
-def _goto_step2(qtbot):
-    from metaedit.app import MetadataMainWindow
-
-    win = MetadataMainWindow()
-    qtbot.addWidget(win)
-    # Prepare Step 1 with a valid 'New' entry to avoid modal dialogs in headless mode
-    sel = win.page_select
-    sel.rb_new.setChecked(True)
-    sel.new_brand.setText("TestBrand")
-    sel.new_speaker_model.setText("TestModel")
-    QApplication.processEvents()
-
-    # Navigate to Step 2
-    win.page_select.next_btn.click()
-    QApplication.processEvents()
-    assert win.stack.currentWidget() is win.page_edit
-    return win
-
-
-# --------------------
-# App UI tests
-# --------------------
-
-
-def test_window_creation(qtbot):
-    from metaedit.app import MetadataMainWindow
-
-    win = MetadataMainWindow()
-    qtbot.addWidget(win)
-
-    assert win.windowTitle().startswith("Spinorama Metadata Manager")
-    # Starts at first page
-    assert win.stack.currentWidget() is win.page_select
-
-
-def test_navigation_flow(qtbot):
-    from metaedit.app import MetadataMainWindow
-
-    win = MetadataMainWindow()
-    qtbot.addWidget(win)
-    # Step 1: select New and fill required fields
-    sel = win.page_select
-    sel.rb_new.setChecked(True)
-    sel.new_brand.setText("BrandA")
-    sel.new_speaker_model.setText("ModelB")
-    QApplication.processEvents()
-
-    # Step 1 -> Step 2
-    win.page_select.next_btn.click()
-    QApplication.processEvents()
-    assert win.stack.currentWidget() is win.page_edit
-
-    # Step 2 -> Step 1 (Back)
-    win.page_edit.back_btn.click()
-    QApplication.processEvents()
-    assert win.stack.currentWidget() is win.page_select
-
-    # Step 1 -> Step 2 -> Step 3
-    win.page_select.next_btn.click()
-    QApplication.processEvents()
-    assert win.stack.currentWidget() is win.page_edit
-    # Ensure a valid measurement key before proceeding to Step 3 to avoid modal dialogs
-    tabs = win.page_edit.measurements_tabs
-    panel = tabs.widget(0)
-    le_key = panel.findChild(QLineEdit, "meas_key")
-    if isinstance(le_key, QLineEdit):
-        le_key.setText("m1")
-    QApplication.processEvents()
-    win.page_edit.next_btn.click()
-    QApplication.processEvents()
-    assert win.stack.currentWidget() is win.page_review
-
-    # Step 3 -> Step 2 (Back)
-    win.page_review.back_btn.click()
-    QApplication.processEvents()
-    assert win.stack.currentWidget() is win.page_edit
-
-
-def test_step2_dynamic_behaviors(qtbot):
-    from typing import cast
-    from metaedit.app import MetadataMainWindow
-    from PySide6.QtWidgets import QComboBox, QLineEdit
-
-    win = MetadataMainWindow()
-    qtbot.addWidget(win)
-
-    # Navigate to Step 2
-    # Use helper behavior from _goto_step2 to ensure safe navigation
-    win.page_select.rb_new.setChecked(True)
-    win.page_select.new_brand.setText("BrandZ")
-    win.page_select.new_speaker_model.setText("ModelZ")
-    QApplication.processEvents()
-    win.page_select.next_btn.click()
-    QApplication.processEvents()
-    assert win.stack.currentWidget() is win.page_edit
-
-    # There should be at least one measurement tab by default
-    tabs = win.page_edit.measurements_tabs
-    assert tabs.count() >= 1
-    panel = tabs.widget(0)
-
-    # 1) format "klippel" sets quality to "high"
-    cb_format_opt = panel.findChild(QComboBox, "meas_format")
-    cb_quality_opt = panel.findChild(QComboBox, "meas_quality")
-    assert cb_format_opt is not None and cb_quality_opt is not None
-    cb_format = cast(QComboBox, cb_format_opt)
-    cb_quality = cast(QComboBox, cb_quality_opt)
-    idx = cb_format.findText("klippel")
-    assert idx >= 0
-    cb_format.setCurrentIndex(idx)
-    qtbot.waitUntil(lambda: cb_quality.currentText() == "high")
-
-    # 2) type "active" disables sensitivity and impedance; switching back enables them
-    type_cb: QComboBox = win.page_edit.form_type_cb
-    idx_active = type_cb.findText("active")
-    assert idx_active >= 0
-    type_cb.setCurrentIndex(idx_active)
-    le_sens_opt = panel.findChild(QLineEdit, "sp_sens")
-    le_imp_opt = panel.findChild(QLineEdit, "sp_imp")
-    assert le_sens_opt is not None and le_imp_opt is not None
-    le_sens = cast(QLineEdit, le_sens_opt)
-    le_imp = cast(QLineEdit, le_imp_opt)
-    qtbot.waitUntil(lambda: not le_sens.isEnabled() and not le_imp.isEnabled())
-    idx_passive = type_cb.findText("passive")
-    assert idx_passive >= 0
-    type_cb.setCurrentIndex(idx_passive)
-    qtbot.waitUntil(lambda: le_sens.isEnabled() and le_imp.isEnabled())
-
-    # 3) editing key updates default measurement selector
-    le_key_opt = panel.findChild(QLineEdit, "meas_key")
-    assert le_key_opt is not None
-    le_key = cast(QLineEdit, le_key_opt)
-    le_key.setText("my_meas")
-    dm_cb: QComboBox = win.page_edit.default_meas_cb
-
-    def _dm_has_key() -> bool:
-        return any(dm_cb.itemText(i) == "my_meas" for i in range(dm_cb.count()))
-
-    qtbot.waitUntil(_dm_has_key)
-
-    # 4) initial populate: creating a panel with format pre-set to klippel sets quality to high
-    # Use the internal method to simulate initial population with existing data
-    win._add_measurement_panel("init", {"format": "klippel"})  # type: ignore[attr-defined]
-    # Find the tab/panel with key == "init"
-    found_quality_high = False
-    for i in range(tabs.count()):
-        p2 = tabs.widget(i)
-        le_key2 = p2.findChild(QLineEdit, "meas_key")
-        if le_key2 and le_key2.text() == "init":
-            cb_quality2 = p2.findChild(QComboBox, "meas_quality")
-            assert cb_quality2 is not None
-            found_quality_high = cb_quality2.currentText() == "high"
-            break
-    assert found_quality_high
-
-
-def test_step1_visibility_toggle_and_radio_prominence(qtbot):
-    from metaedit.app import MetadataMainWindow
-
-    win = MetadataMainWindow()
-    qtbot.addWidget(win)
-
-    sel = win.page_select
-    # Manually call toggle to ensure proper initialization
-    # This is needed because rb_existing is already True when the widget is created,
-    # so setting it to True again won't trigger the toggled signal
-    sel.rb_existing.toggled.emit(True)
-
-    # Initial: Existing selected -> existing group visible, new group hidden
-    assert sel.rb_existing.isChecked()
-    # Add a small wait to ensure the initial toggle has time to run
-    qtbot.wait(50)
-    # In test environments, we need to use isVisibleTo() instead of isVisible()
-    assert sel.existing_group.isVisibleTo(sel)
-    assert not sel.new_group.isVisibleTo(sel)
-
-    # Toggle to New
-    sel.rb_new.setChecked(True)
-    qtbot.waitUntil(lambda: sel.new_group.isVisibleTo(sel))
-    assert not sel.existing_group.isVisibleTo(sel)
-
-    # Back to Existing
-    sel.rb_existing.setChecked(True)
-    qtbot.waitUntil(lambda: sel.existing_group.isVisibleTo(sel))
-    assert not sel.new_group.isVisibleTo(sel)
-
-    # Radios should be visually larger (style/min height)
-    assert sel.rb_existing.minimumHeight() >= 32
-    assert "font-size: 16px" in sel.rb_existing.styleSheet()
-
-
-def test_data_acq_via_gll_defaults(qtbot):
-    from typing import cast
-    from metaedit.app import MetadataMainWindow
-    from PySide6.QtWidgets import QComboBox, QLineEdit
-
-    win = MetadataMainWindow()
-    qtbot.addWidget(win)
-
-    # Navigate to Step 2
-    win.page_select.rb_new.setChecked(True)
-    win.page_select.new_brand.setText("BrandG")
-    win.page_select.new_speaker_model.setText("ModelG")
-    QApplication.processEvents()
-    win.page_select.next_btn.click()
-    QApplication.processEvents()
-    assert win.stack.currentWidget() is win.page_edit
-
-    # Use first measurement panel
-    tabs = win.page_edit.measurements_tabs
-    panel = tabs.widget(0)
-
-    cb_via_opt = panel.findChild(QComboBox, "da_via")
-    le_dist_opt = panel.findChild(QLineEdit, "da_distance")
-    le_signal_opt = panel.findChild(QLineEdit, "da_signal")
-    le_min_opt = panel.findChild(QLineEdit, "da_min")
-    le_max_opt = panel.findChild(QLineEdit, "da_max")
-    assert cb_via_opt and le_dist_opt and le_signal_opt and le_min_opt and le_max_opt
-    cb_via = cast(QComboBox, cb_via_opt)
-    le_dist = cast(QLineEdit, le_dist_opt)
-    le_signal = cast(QLineEdit, le_signal_opt)
-    le_min = cast(QLineEdit, le_min_opt)
-    le_max = cast(QLineEdit, le_max_opt)
-
-    # Ensure empty initial values
-    assert le_dist.text().strip() == ""
-    assert le_signal.text().strip() == ""
-    assert le_min.text().strip() == ""
-    assert le_max.text().strip() == ""
-
-    # Selecting GLL should prefill defaults when fields are empty
-    cb_via.setCurrentText("GLL")
-    qtbot.waitUntil(lambda: le_dist.text() == "10")
-    assert le_signal.text() == "aes 20Hz-20kHz"
-    assert le_min.text() == "20"
-    assert le_max.text() == "20000"
-
-
-def test_step3_back_does_not_invoke_to_edit(qtbot, monkeypatch):
-    # Ensure that pressing Back on Step 3 doesn't call _to_edit (which reloads from Step 1)
-    from metaedit.app import MetadataMainWindow
-
-    # Spy on _to_edit to track calls
-    orig_to_edit = MetadataMainWindow._to_edit
-    calls = {"count": 0}
-
-    def spy(self):  # type: ignore[no-redef]
-        calls["count"] += 1
-        return orig_to_edit(self)
-
-    # Patch before window instantiation so Step 1 -> Step 2 goes through spy
-    monkeypatch.setattr(MetadataMainWindow, "_to_edit", spy, raising=True)
-
-    win = MetadataMainWindow()
-    qtbot.addWidget(win)
-    # Step 1: choose New and fill required
-    win.page_select.rb_new.setChecked(True)
-    win.page_select.new_brand.setText("BrandC")
-    win.page_select.new_speaker_model.setText("ModelC")
-    QApplication.processEvents()
-    # Step 1 -> Step 2 via Next (this will call _to_edit once)
-    win.page_select.next_btn.click()
-    QApplication.processEvents()
-    assert win.stack.currentWidget() is win.page_edit
-    called_before = calls["count"]
-    assert called_before >= 1  # sanity: we did go through _to_edit once
-
-    # Step 2 -> Step 3
-    # Ensure measurement key set to avoid modal dialog in headless mode
-    tabs = win.page_edit.measurements_tabs
-    panel = tabs.widget(0)
-    le_key = panel.findChild(QLineEdit, "meas_key")
-    if isinstance(le_key, QLineEdit):
-        le_key.setText("m1")
-    QApplication.processEvents()
-    win.page_edit.next_btn.click()
-    QApplication.processEvents()
-    assert win.stack.currentWidget() is win.page_review
-
-    # Step 3 -> Step 2 (Back) should NOT call _to_edit again
-    win.page_review.back_btn.click()
-    QApplication.processEvents()
-    assert win.stack.currentWidget() is win.page_edit
-    assert calls["count"] == called_before
-
-
-# --------------------
-# CLI tests
-# --------------------
-
-
-def test_cli_missing_speaker_exits_with_warning():
-    # Run the module with a clearly missing speaker key
-    cmd = [sys.executable, "-m", "metaedit.app", "--speaker", "__nonexistent__"]
-    env = os.environ.copy()
-    env["QT_QPA_PLATFORM"] = "minimal"
-    res = subprocess.run(cmd, capture_output=True, text=True, env=env)
-
-    assert res.returncode == 1
-    assert "Warning: speaker '__nonexistent__' not found." in (res.stderr or "")
-
-
-# --------------------
-# Export tests
-# --------------------
-
-
 def test_top_level_order_min_diff() -> None:
     from metaedit.models import (
-        DataAcquisition,
         Measurement,
-        Size,
         SpeakerMetadata,
-        Specifications,
         export_speaker_metadata,
     )
 
@@ -640,194 +492,6 @@ def test_measurement_order_and_prune() -> None:
     assert _keys_in_order(spec_keys, expected_spec_order)
 
 
-# --------------------
-# GitOps tests
-# --------------------
-
-
-def test_plan_pr_requires_develop_and_uptodate() -> None:
-    from metaedit.gitops import plan_pr_actions
-
-    files = ["datas/speaker_a.py", "datas/pictures/Genelec 8341A.png"]
-    # Not on develop
-    with pytest.raises(ValueError):
-        plan_pr_actions(
-            current_branch="main",
-            up_to_date=True,
-            files=files,
-            speaker_key="Genelec 8341A",
-            date_str="2025-08-26",
-            gh_available=True,
-        )
-    # Not up-to-date
-    with pytest.raises(ValueError):
-        plan_pr_actions(
-            current_branch="develop",
-            up_to_date=False,
-            files=files,
-            speaker_key="Genelec 8341A",
-            date_str="2025-08-26",
-            gh_available=True,
-        )
-
-
-def test_plan_pr_commands_with_and_without_gh() -> None:
-    from metaedit.gitops import plan_pr_actions
-
-    files = ["datas/speaker_g.py", "datas/pictures/Genelec 8341A.png"]
-    cmds = plan_pr_actions(
-        current_branch="develop",
-        up_to_date=True,
-        files=files,
-        speaker_key="Genelec 8341A",
-        date_str="2025-08-26",
-        gh_available=True,
-    )
-    # Switch branch command
-    assert cmds[0][:3] == ["git", "switch", "-c"]
-    # Add includes both files
-    assert ["git", "add", *files] in cmds
-    # Commit present
-    assert any(c[:2] == ["git", "commit"] for c in cmds)
-    # Push present
-    assert ["git", "push", "-u", "origin", cmds[0][3]] in cmds
-    # gh pr create present
-    assert any(c[:3] == ["gh", "pr", "create"] for c in cmds)
-
-    # Without gh, gh command omitted
-    cmds2 = plan_pr_actions(
-        current_branch="develop",
-        up_to_date=True,
-        files=files,
-        speaker_key="Genelec 8341A",
-        date_str="2025-08-26",
-        gh_available=False,
-    )
-    assert not any(c and c[0] == "gh" for c in cmds2)
-
-
-def test_sanitize_ref() -> None:
-    from metaedit.gitops import sanitize_ref
-
-    assert sanitize_ref("Genelec 8341A") == "genelec-8341a"
-    assert sanitize_ref("B&W 800 D3") == "b-w-800-d3"
-    assert sanitize_ref("  ") == "meta"
-
-
-# --------------------
-# Merger tests
-# --------------------
-
-
-def test_strip_app_only_fields(tmp_path: Path) -> None:
-    from metaedit import merger
-
-    pic = str(tmp_path / "x.png")
-    d = _minimal_valid_entry("Tbrand", "Model") | {"picture": pic}
-    out = merger.strip_app_only_fields(d)
-    assert "picture" not in out
-
-
-def test_apply_merge_writes_sorted_and_valid(tmp_path: Path, monkeypatch: "MonkeyPatch") -> None:
-    from metaedit import merger
-
-    # Prepare a dummy module to stand in for datas.speaker_t
-    letter = "t"
-    mod_name = f"datas.speaker_{letter}"
-    attr_name = f"speakers_info_{letter}"
-
-    # Initial existing DB with one entry
-    existing: Dict[str, Dict[str, Any]] = {"Tbrand Zeta": _minimal_valid_entry("Tbrand", "Zeta")}
-
-    # Create a fake module with __file__ pointing to a temp file
-    file_path = os.path.join(str(tmp_path / "merger"), f"metadata_{letter}.py")
-    os.makedirs(os.path.dirname(file_path), exist_ok=True)
-    # Write an initial file so backup logic can copy it
-    with io.open(file_path, "w", encoding="utf-8") as f:
-        f.write("# initial dummy file\n")
-
-    dummy = types.SimpleNamespace()
-    setattr(dummy, attr_name, existing)
-    dummy.__file__ = file_path  # type: ignore[attr-defined]
-
-    real_import_module = importlib.import_module
-
-    def fake_import_module(name: str, package: str | None = None):  # type: ignore[override]
-        if name == mod_name:
-            return dummy
-        return real_import_module(name, package)
-
-    monkeypatch.setattr(importlib, "import_module", fake_import_module)
-
-    # Now merge a new entry that should sort before 'Zeta'
-    export = _minimal_valid_entry("Tbrand", "Beta")
-    written_file, key = merger.apply_merge(export)
-
-    assert key == "Tbrand Beta"
-    assert written_file == file_path
-    # Read back file content and extract the dict literal to verify keys order
-    with io.open(file_path, "r", encoding="utf-8") as f:
-        content = f.read()
-    # Extract the literal after the first '='
-    m = re.search(r"=\s*(\{.*\})\s*\Z", content, re.S)
-    assert m, f"Unexpected file content: {content[:200]}..."
-    literal = m.group(1)
-    data = ast.literal_eval(literal)
-    assert list(data.keys()) == ["Tbrand Beta", "Tbrand Zeta"]
-    # Validate the merged entry remains intact
-    assert data["Tbrand Beta"]["default_measurement"] == "m1"
-
-
-def test_apply_merge_runs_ruff_format(tmp_path: Path, monkeypatch: "MonkeyPatch") -> None:
-    from metaedit import merger
-
-    # Prepare a dummy module to stand in for datas.speaker_t
-    letter = "t"
-    mod_name = f"datas.speaker_{letter}"
-    attr_name = f"speakers_info_{letter}"
-
-    # Initial existing DB with one entry
-    existing: Dict[str, Dict[str, Any]] = {"Tbrand Zeta": _minimal_valid_entry("Tbrand", "Zeta")}
-
-    # Create a fake module with __file__ pointing to a temp file
-    file_path = os.path.join(str(tmp_path / "merger"), f"metadata_{letter}.py")
-    os.makedirs(os.path.dirname(file_path), exist_ok=True)
-    with io.open(file_path, "w", encoding="utf-8") as f:
-        f.write("# initial dummy file\n")
-
-    dummy = types.SimpleNamespace()
-    setattr(dummy, attr_name, existing)
-    dummy.__file__ = file_path  # type: ignore[attr-defined]
-
-    real_import_module = importlib.import_module
-
-    def fake_import_module(name: str, package: str | None = None):  # type: ignore[override]
-        if name == mod_name:
-            return dummy
-        return real_import_module(name, package)
-
-    monkeypatch.setattr(importlib, "import_module", fake_import_module)
-
-    called: Dict[str, Any] = {"path": None}
-
-    def fake_format(path: str) -> None:
-        called["path"] = path
-
-    monkeypatch.setattr(merger, "_format_with_ruff", fake_format)
-
-    # Now merge a new entry
-    export = _minimal_valid_entry("Tbrand", "Beta")
-    written_file, _ = merger.apply_merge(export)
-
-    # Ensure our formatting hook was invoked with the expected file path
-    assert called["path"] == written_file
-
-
-# --------------------
-# Models tests
-# --------------------
-
-
 def test_convert_legacy_reviews_single_field():
     from metaedit.models import SpeakerMetadata
 
@@ -847,462 +511,5 @@ def test_date_formatting_roundtrip():
     src = "20240131"
     as_input = SpeakerMetadata.format_date_for_input(src)
     assert as_input == "2024-01-31"
-    back = SpeakerMetadata.format_date_for_python(as_input)
+    back = SpeakerMetadata.format_date_for_metadata(as_input)
     assert back == src
-
-
-# --------------------
-# Picture tests
-# --------------------
-
-
-def test_choose_picture_copies_and_exports(qtbot, tmp_path, monkeypatch):
-    # Prepare a tiny valid PNG using QPixmap
-    src_img = tmp_path / "src.png"
-    pm = QPixmap(1, 1)
-    pm.fill(QColor("white"))
-    assert pm.save(str(src_img), "PNG")
-
-    # Patch QFileDialog.getOpenFileName to return our image
-    from metaedit import app as app_mod
-
-    def fake_get_open_file_name(parent=None, caption="", directory="", filter_str=""):
-        return str(src_img), "Images (*.png *.jpg *.jpeg *.webp)"
-
-    # Patch the actual symbol used by the app: _choose_picture imports QFileDialog locally
-    monkeypatch.setattr(
-        "PySide6.QtWidgets.QFileDialog.getOpenFileName",
-        staticmethod(fake_get_open_file_name),
-    )
-
-    # Patch pictures destination directory to be tmp_path
-    monkeypatch.setattr(app_mod, "PICTURES_DIR", str(tmp_path))
-
-    # Create window
-    win = app_mod.MetadataMainWindow()
-    qtbot.addWidget(win)
-    # no show() in headless mode
-
-    # Step 1: New speaker
-    win.page_select.rb_new.setChecked(True)
-    win.page_select.new_brand.setText("TestBrandX")
-    win.page_select.new_speaker_model.setText("ModelY 123")
-
-    # Next to edit
-    QApplication.processEvents()
-    win.page_select.next_btn.click()
-    QApplication.processEvents()
-    assert win.stack.currentWidget() is win.page_edit
-
-    # Click choose picture -> should copy to PICTURES_DIR/TestBrandX ModelY 123.png
-    win.page_edit.choose_picture_btn.click()
-    QApplication.processEvents()
-
-    dest_path = os.path.join(str(tmp_path), "TestBrandX ModelY 123.png")
-    assert os.path.isfile(dest_path)
-
-    # The model should record the picture path
-    assert win.current is not None
-    assert win.current.picture == dest_path
-
-    # The UI label should now have a pixmap (and no placeholder text)
-    lbl = win.page_edit.picture_label
-    assert lbl.pixmap() is not None
-    assert lbl.text() in (None, "")
-
-    # Proceed to review and validate export contains picture
-    # Set a valid measurement key before proceeding
-    tabs = win.page_edit.measurements_tabs
-    panel = tabs.widget(0)
-    le_key = panel.findChild(QLineEdit, "meas_key")
-    if isinstance(le_key, QLineEdit):
-        le_key.setText("m1")
-    QApplication.processEvents()
-    win.page_edit.next_btn.click()
-    QApplication.processEvents()
-    assert win.stack.currentWidget() is win.page_review
-    data = json.loads(win.page_review.summary.toPlainText())
-    assert data["brand"] == "TestBrandX"
-    assert data["model"] == "ModelY 123"
-    assert data.get("picture") == dest_path
-
-
-# --------------------
-# Prefill tests
-# --------------------
-
-
-def test_prefill_existing_speaker(qtbot):
-    from metaedit.app import MetadataMainWindow
-
-    name, meta = _pick_sample_speaker()
-
-    win = MetadataMainWindow()
-    qtbot.addWidget(win)
-
-    # Ensure we're in Existing mode
-    win.page_select.rb_existing.setChecked(True)
-
-    # Select the sample speaker in the combobox
-    cb = win.page_select.speakers_cb
-    idx = cb.findText(name)
-    assert idx >= 0, "Sample speaker not listed in combobox"
-    cb.setCurrentIndex(idx)
-
-    # Proceed to Step 2
-    win.page_select.next_btn.click()
-    QApplication.processEvents()
-    assert win.stack.currentWidget() is win.page_edit
-
-    # Basic fields
-    assert win.page_edit.form_brand.text() == meta.get("brand")
-    assert win.page_edit.form_model.text() == meta.get("model")
-    # type/shape/amount are comboboxes; only assert when value exists in metadata
-    _t = meta.get("type")
-    if isinstance(_t, str):
-        assert win.page_edit.form_type_cb.currentText() == _t
-    _s = meta.get("shape")
-    if isinstance(_s, str):
-        assert win.page_edit.form_shape_cb.currentText() == _s
-    assert win.page_edit.form_price.text() == (meta.get("price") or "")
-    _a = meta.get("amount")
-    if isinstance(_a, str):
-        assert win.page_edit.form_amount.currentText() == _a
-
-    # Default measurement selector
-    dm = meta.get("default_measurement")
-    if isinstance(dm, str):
-        assert win.page_edit.default_meas_cb.currentText() == dm
-
-    # Measurement panels count must match
-    measurements = meta.get("measurements", {})
-    expected_count = len(measurements)
-    actual_count = win.page_edit.measurements_tabs.count()
-    assert actual_count == expected_count
-
-    # Validate a sample measurement prefill (first one)
-    # Access the first panel widget
-    if expected_count:
-        panel = win.page_edit.measurements_tabs.widget(0)
-        assert panel is not None
-        # Check a few representative fields
-        first_key = next(iter(measurements))
-        first_meas = measurements[first_key]
-        fmt = first_meas.get("format") if isinstance(first_meas, dict) else None
-        origin = first_meas.get("origin") if isinstance(first_meas, dict) else None
-        de_str = first_meas.get("review_published") if isinstance(first_meas, dict) else None
-
-        cb_format: QComboBox | None = panel.findChild(QComboBox, "meas_format")
-        le_origin: QLineEdit | None = panel.findChild(QLineEdit, "meas_origin")
-        de: QDateEdit | None = panel.findChild(QDateEdit, "meas_review_date")
-
-        if fmt:
-            assert cb_format is not None
-            assert cb_format.currentText() == fmt
-        if origin:
-            assert le_origin is not None
-            assert le_origin.text() == origin
-        if isinstance(de_str, str) and len(de_str) == 8:
-            assert de is not None
-            qd = QDate.fromString(de_str, "yyyyMMdd")
-            assert qd.isValid()
-            assert de.date() == qd
-
-
-# --------------------
-# Qt export tests
-# --------------------
-
-
-def test_step1_to_step3_export_matches_loaded(qtbot):
-    from metaedit.app import MetadataMainWindow
-
-    name, raw = _pick_sample_speaker()
-
-    win = MetadataMainWindow()
-    qtbot.addWidget(win)
-
-    # Step 1: select existing speaker
-    win.page_select.rb_existing.setChecked(True)
-    cb = win.page_select.speakers_cb
-    idx = cb.findText(name)
-    assert idx >= 0
-    cb.setCurrentIndex(idx)
-
-    # Step 1 -> Step 2
-    win.page_select.next_btn.click()
-    QApplication.processEvents()
-    assert win.stack.currentWidget() is win.page_edit
-
-    # Step 2 -> Step 3
-    win.page_edit.next_btn.click()
-    QApplication.processEvents()
-    assert win.stack.currentWidget() is win.page_review
-
-    # Read JSON preview
-    txt = win.page_review.summary.toPlainText()
-    assert txt
-    actual = json.loads(txt)
-
-    expected = _normalize_expected_export(cast(Dict[str, Any], raw))
-
-    assert actual == expected
-
-
-# --------------------
-# Sections and layout tests
-# --------------------
-
-
-def test_collapsible_sections_default_and_toggle(qtbot):
-    from PySide6.QtWidgets import QWidget
-
-    win = _goto_step2(qtbot)
-
-    tabs = win.page_edit.measurements_tabs
-    assert tabs.count() >= 1
-    panel: QWidget = tabs.widget(0)
-
-    # Find toggles and containers
-    da_toggle: QToolButton | None = panel.findChild(QToolButton, "toggle_da")
-    ex_toggle: QToolButton | None = panel.findChild(QToolButton, "toggle_ex")
-    da_container: QWidget | None = panel.findChild(QWidget, "da_container")
-    ex_container: QWidget | None = panel.findChild(QWidget, "ex_container")
-
-    assert da_toggle is not None and ex_toggle is not None
-    assert da_container is not None and ex_container is not None
-
-    # Hidden by default
-    assert not da_container.isVisible()
-    assert not ex_container.isVisible()
-
-    # Toggle ON
-    da_toggle.click()
-    ex_toggle.click()
-    QApplication.processEvents()
-
-    # Instead of waiting for isVisible(), wait for isVisibleTo() which works in this context
-    qtbot.waitUntil(
-        lambda: da_container.isVisibleTo(panel) and ex_container.isVisibleTo(panel), timeout=5000
-    )
-
-    # Toggle OFF
-    da_toggle.click()
-    ex_toggle.click()
-    QApplication.processEvents()
-    # Instead of waiting for isVisible(), wait for isVisibleTo() which works in this context
-    qtbot.waitUntil(
-        lambda: not da_container.isVisibleTo(panel) and not ex_container.isVisibleTo(panel),
-        timeout=5000,
-    )
-
-
-def test_extras_two_columns_and_specs_fields_present(qtbot):
-    win = _goto_step2(qtbot)
-
-    tabs = win.page_edit.measurements_tabs
-    panel: QWidget = tabs.widget(0)
-
-    # Extras two columns (two QFormLayouts inside ex_container)
-    ex_container: QWidget | None = panel.findChild(QWidget, "ex_container")
-    assert ex_container is not None
-    # The two columns are QFormLayouts; traverse layouts by counting children that are QFormLayout
-    form_layouts = ex_container.findChildren(QFormLayout)
-    assert len(form_layouts) >= 2
-
-    # Specifications expanded fields present
-    assert panel.findChild(QLineEdit, "sp_disp_h") is not None
-    assert panel.findChild(QLineEdit, "sp_disp_v") is not None
-    assert panel.findChild(QLineEdit, "sp_spl_max") is not None
-    assert panel.findChild(QLineEdit, "sp_spl_m_noise") is not None
-    assert panel.findChild(QLineEdit, "sp_spl_b_noise") is not None
-    assert panel.findChild(QLineEdit, "sp_spl_pink_noise") is not None
-
-
-def test_collect_form_exports_nested_spec_fields(qtbot):
-    from metaedit.app import MetadataMainWindow
-
-    win = _goto_step2(qtbot)
-
-    tabs = win.page_edit.measurements_tabs
-    panel: QWidget = tabs.widget(0)
-
-    # Fill required key
-    le_key = panel.findChild(QLineEdit, "meas_key")
-    assert isinstance(le_key, QLineEdit)
-    le_key.setText("t1")
-
-    # Fill some specifications fields
-    for name, value in (
-        ("sp_sens", "87.5"),
-        ("sp_imp", "4"),
-        ("sp_weight", "12.3"),
-        ("sp_h", "300"),
-        ("sp_w", "180"),
-        ("sp_d", "250"),
-    ):
-        w = panel.findChild(QLineEdit, name)
-        assert isinstance(w, QLineEdit)
-        w.setText(value)
-
-    # Dispersion
-    w = panel.findChild(QLineEdit, "sp_disp_h")
-    assert isinstance(w, QLineEdit)
-    w.setText("90")
-    w = panel.findChild(QLineEdit, "sp_disp_v")
-    assert isinstance(w, QLineEdit)
-    w.setText("40")
-
-    # SPL
-    for name, value in (
-        ("sp_spl_peak", "110"),
-        ("sp_spl_long", "98"),
-        ("sp_spl_max", "112"),
-        ("sp_spl_m_noise", "101"),
-        ("sp_spl_b_noise", "99"),
-        ("sp_spl_pink_noise", "100"),
-    ):
-        w = panel.findChild(QLineEdit, name)
-        assert isinstance(w, QLineEdit)
-        w.setText(value)
-
-    # Proceed to review to trigger _collect_form
-    win.page_edit.next_btn.click()
-    QApplication.processEvents()
-    assert win.stack.currentWidget() is win.page_review
-
-    # Grab JSON summary
-    txt = win.page_review.summary.toPlainText().strip()
-    assert txt
-    data = json.loads(txt)
-
-    meas = data["measurements"]["t1"]
-    specs = meas["specifications"]
-
-    # Flat fields
-    assert specs["spl_peak"] == 110.0
-    assert specs["spl_long_term"] == 98.0
-
-    # Nested dispersion
-    assert specs["dispersion"]["horizontal"] == 90.0
-    assert specs["dispersion"]["vertical"] == 40.0
-
-    # Nested SPL alias
-    assert "SPL" in specs
-    spl = specs["SPL"]
-    assert spl["peak"] == 110.0
-    assert spl["continuous"] == 98.0
-    assert spl["max"] == 112.0
-    assert spl["m_noise"] == 101.0
-    assert spl["b_noise"] == 99.0
-    assert spl["pink_noise"] == 100.0
-
-
-def test_default_symmetry_and_group_boxes_present(qtbot):
-    win = _goto_step2(qtbot)
-
-    tabs = win.page_edit.measurements_tabs
-    panel: QWidget = tabs.widget(0)
-
-    # Default symmetry is 'none'
-    cb: QComboBox | None = panel.findChild(QComboBox, "meas_symmetry")
-    assert cb is not None
-    assert cb.currentText().strip().lower() == "none"
-
-    # Group frames exist with headers
-    for obj, header in (
-        ("reviews_box", "Reviews"),
-        ("specs_box", "Specifications"),
-        ("da_box", "Data Acquisition"),
-        ("ex_box", "Extras"),
-    ):
-        box: QFrame | None = panel.findChild(QFrame, obj)
-        assert box is not None
-        # A QLabel child with the expected header text exists inside the box
-        labels = box.findChildren(QLabel)
-        assert any(l.text() == header for l in labels)
-
-
-def test_amount_combobox_and_shape_no_empty(qtbot):
-    win = _goto_step2(qtbot)
-
-    # Amount is a combobox with fixed options
-    amt = win.page_edit.form_amount
-    assert isinstance(amt, QComboBox)
-    items = [amt.itemText(i) for i in range(amt.count())]
-    assert items == ["each", "pair"]
-
-    # Shape has no empty option
-    shp = win.page_edit.form_shape_cb
-    assert isinstance(shp, QComboBox)
-    shp_items = [shp.itemText(i) for i in range(shp.count())]
-    assert "" not in shp_items
-    assert shp_items[0] != ""
-
-
-def test_specs_before_da_and_extras_and_brand_model_wider(qtbot):
-    from typing import cast
-
-    win = _goto_step2(qtbot)
-
-    tabs = win.page_edit.measurements_tabs
-    panel: QWidget = tabs.widget(0)
-
-    # Ordering: Specifications comes before DA and Extras in the main panel layout
-    layout = panel.layout()
-    assert layout is not None
-    specs_box = panel.findChild(QFrame, "specs_box")
-    da_box = panel.findChild(QFrame, "da_box")
-    ex_box = panel.findChild(QFrame, "ex_box")
-    assert specs_box and da_box and ex_box
-    idx_specs = layout.indexOf(specs_box)
-    idx_da = layout.indexOf(da_box)
-    idx_ex = layout.indexOf(ex_box)
-    assert 0 <= idx_specs < idx_da
-    assert 0 <= idx_specs < idx_ex
-
-    # Brand/Model fields are wider (min width >= 260)
-    assert win.page_edit.form_brand.minimumWidth() >= 260
-    assert win.page_edit.form_model.minimumWidth() >= 260
-
-
-def test_collapsed_headers_compact(qtbot):
-    win = _goto_step2(qtbot)
-
-    tabs = win.page_edit.measurements_tabs
-    panel: QWidget = tabs.widget(0)
-
-    # DA toggle icon size small and margins reduced
-    da_toggle: QToolButton | None = panel.findChild(QToolButton, "toggle_da")
-    assert da_toggle is not None
-    icon_sz: QSize = da_toggle.iconSize()
-    assert icon_sz.width() <= 12 and icon_sz.height() <= 12
-
-    # Layout margins on DA box are compact
-    da_box: QFrame | None = panel.findChild(QFrame, "da_box")
-    assert da_box is not None
-    lay = da_box.layout()
-    assert lay is not None
-    m = lay.contentsMargins()
-    assert m.left() <= 6 and m.top() <= 4 and m.right() <= 6 and m.bottom() <= 4
-
-
-def test_extras_header_compact(qtbot):
-    win = _goto_step2(qtbot)
-
-    tabs = win.page_edit.measurements_tabs
-    panel: QWidget = tabs.widget(0)
-
-    # Extras toggle icon size small and margins reduced
-    ex_toggle: QToolButton | None = panel.findChild(QToolButton, "toggle_ex")
-    assert ex_toggle is not None
-    icon_sz: QSize = ex_toggle.iconSize()
-    assert icon_sz.width() <= 12 and icon_sz.height() <= 12
-
-    # Layout margins on Extras box are compact
-    ex_box: QFrame | None = panel.findChild(QFrame, "ex_box")
-    assert ex_box is not None
-    lay = ex_box.layout()
-    assert lay is not None
-    m = lay.contentsMargins()
-    assert m.left() <= 6 and m.top() <= 4 and m.right() <= 6 and m.bottom() <= 4

@@ -1,113 +1,55 @@
 #!/bin/bash
-# A library to display spinorama charts
-#
 # Copyright (C) 2020-2025 Pierre Aubert pierre(at)spinorama(dot)org
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Source this file from Bash or Zsh to activate the project environment.
 
-
-mkdir -p build
-ENVLOG=build/env.log
-touch $ENVLOG
-
-## SSH AGENT
-## ----------------------------------------------------------------------
-ssh-agent -k >> $ENVLOG 2>&1
-eval $(ssh-agent)
-echo $SSH_AGENT_SOCK
-if ! test -f ~/.ssh/id_rsa_github; then
-    echo "ERROR github key don't exists!"
+if [ -n "${BASH_VERSION:-}" ]; then
+    SPIN="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+elif [ -n "${ZSH_VERSION:-}" ]; then
+    SPIN="$(cd -- "$(dirname -- "${(%):-%x}")" && pwd)"
+else
+    echo "Source env.sh from Bash or Zsh." >&2
+    return 1 2>/dev/null || exit 1
 fi
+export SPIN
 
-## Github keys
-## ----------------------------------------------------------------------
-github=$(ssh-add -l | grep github | cut -d ' ' -f 3)
-if test -z $github; then
-    ssh-add ~/.ssh/id_rsa_github >> $ENVLOG 2>&1
-    github=$(ssh-add -l 2>&1 | grep github | cut -d ' ' -f 3)
+_spinorama_env() {
+    if [ ! -e "$SPIN/.venv" ]; then
+        if ! command -v python3.12 >/dev/null 2>&1; then
+            echo "Python 3.12 is required; run scripts/setup.sh first." >&2
+            return 1
+        fi
+        python3.12 -m venv "$SPIN/.venv" || return
+    fi
+    if ! "$SPIN/.venv/bin/python" -c 'import sys; sys.exit(sys.version_info[:2] != (3, 12))'; then
+        echo "$SPIN/.venv must use Python 3.12; move it aside and run scripts/setup.sh." >&2
+        return 1
+    fi
+    # shellcheck source=/dev/null
+    source "$SPIN/.venv/bin/activate" || return
+    "$SPIN/.venv/bin/python" -m pip install --quiet -r "$SPIN/requirements.txt" || return
+    export PYTHONPATH="$SPIN:$SPIN/src:$SPIN/src/website:$SPIN/scripts"
+
+    if [ ! -d "$SPIN/node_modules" ]; then
+        npm --prefix "$SPIN" install || return
+    fi
+    case ":$PATH:" in
+        *":$SPIN/node_modules/.bin:"*) ;;
+        *) export PATH="$SPIN/node_modules/.bin:$PATH" ;;
+    esac
+
+    if [ -d /opt/homebrew/opt/imagemagick ]; then
+        export MAGICK_HOME=/opt/homebrew/opt/imagemagick
+    elif [ -d /opt/homebrew/opt/imagemagick@7 ]; then
+        export MAGICK_HOME=/opt/homebrew/opt/imagemagick@7
+    fi
+    mkdir -p "$SPIN/build" || return
+    printf 'Spinorama: %s\nPython: %s\n' "$SPIN" "$(python --version)"
+}
+
+if _spinorama_env; then
+    unset -f _spinorama_env
+else
+    unset -f _spinorama_env
+    return 1 2>/dev/null || exit 1
 fi
-
-## prod keys
-## ----------------------------------------------------------------------
-RSA_ES=$HOME/.ssh/id_rsa_es_web
-if test -f $RSA_ES; then
-    ssh-add $RSA_ES >> $ENVLOG 2>&1
-fi
-RSA_CH=$HOME/.ssh/id_rsa_ch_web
-if test -f $RSA_CH; then
-    ssh-add $RSA_CH >> $ENVLOG 2>&1
-fi
-
-## python virtualenv
-## ----------------------------------------------------------------------
-SPIN=$PWD
-export PYTHONPATH=$SPIN/src:$SPIN/src/website:$SPIN/scripts:$SPIN
-if ! test -d "$SPIN/.venv"; then
-    python3 -m venv .venv
-    source "$SPIN/.venv/bin/activate"
-    # rehash
-    pip3 install -U pip
-    pip3 install -r requirements.txt
-    pip3 install -r requirements-test.txt
-    pip3 install -r requirements-dev.txt
-fi
-source .venv/bin/activate
-
-## node install
-## ----------------------------------------------------------------------
-if ! test -d "$SPIN/node_modules"; then
-    npm install .
-fi
-export PATH=$PATH:$SPIN/node_modules/.bin
-
-## CUDA configuration
-## ----------------------------------------------------------------------
-#CUDA=""
-#if test -x /usr/bin/nvidia-smi; then
-#    CUDA="$(nvidia-smi  -L)"
-#fi
-#if test -d /usr/local/cuda/extras/CUPTI/lib64; then
-#    export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda/extras/CUPTI/lib64
-#fi
-
-## ROCM/HIP configuration
-## ----------------------------------------------------------------------
-#ROCM=""
-#if test -x /usr/bin/rocminfo; then
-#    ROCM="$(rocminfo  | grep 'Marketing Name' | grep Radeon | cut -d: -f 2 | sed -e 's/  //g')"
-#fi
-#if test -d /usr/local/cuda/extras/CUPTI/lib64; then
-#    export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda/extras/CUPTI/lib64
-#fi
-
-# for deepsource code coverage
-export DEEPSOURCE_DSN=https://sampledsn@deepsource.io
-
-# for imagemagic on macos
-if test -d "/opt/homebrew/opt/imagemagick@7/"; then
-    export MAGICK_HOME="/opt/homebrew/opt/imagemagick@7/"
-fi
-
-## summary
-## ----------------------------------------------------------------------
-echo 'SPIN           ' "$SPIN"
-echo ' ' "$(python3 --version) $(which python3)"
-echo ' ' "$(pip3 -V) "
-echo '  jupyter-lab  ' "$(jupyter-lab --version) $(which jupyter-lab)"
-echo '  PYTHONPATH   ' "$PYTHONPATH"
-echo '  github key   ' "$github"
-# echo '  CUDA (Nvidia)' "$CUDA"
-# echo '  ROCM (AMD)   ' "$ROCM"
-# echo '  RAY          ' "$(ray --version)"
-echo '  MAGIC        ' "$MAGICK_HOME"

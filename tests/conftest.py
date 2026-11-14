@@ -1,27 +1,46 @@
-"""Pytest configuration for Qt tests.
+"""Temporary catalogues shared by metadata editor tests."""
 
-For headless CI on macOS, the 'offscreen' platform can hang. Force the
-'minimal' platform before any Qt modules are imported.
-"""
+import shutil
 
-from __future__ import annotations
+import pytest
 
-import os
+from metaedit.storage import MetadataRepository, ROOT
 
-# Set once, don't override if user explicitly set it when invoking pytest
-os.environ.setdefault("QT_QPA_PLATFORM", "minimal")
 
-# Additional stability tweaks for macOS headless
-os.environ.setdefault("QT_MAC_WANTS_LAYER", "1")
-os.environ.setdefault("QT_OPENGL", "software")
+@pytest.fixture
+def repository(tmp_path):
+    directory = tmp_path / "measurements"
+    directory.mkdir()
+    shutil.copyfile(ROOT / "datas/origins.toml", tmp_path / "origins.toml")
+    repository = MetadataRepository(directory)
+    if not repository.validator.is_file():
+        pytest.skip("Build the native validator with make generate-build")
+    return repository
 
-# Avoid native macOS menu bar integration which can crash with headless plugins
-try:
-    from PySide6.QtCore import Qt, QCoreApplication  # type: ignore[reportMissingImports]
 
-    # Must be set before QApplication is instantiated (pytest-qt will create it on demand)
-    QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_DontUseNativeMenuBar, True)
-    QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_UseSoftwareOpenGL, True)
-except Exception:
-    # If PySide6 is not available or fails to import yet, ignore; tests that need Qt will import it later
-    pass
+@pytest.fixture
+def metadata():
+    return {
+        "name": "Example Monitor",
+        "brand": "Example",
+        "model": "Monitor",
+        "type": "active",
+        "shape": "bookshelves",
+        "price": "",
+        "skip": True,
+        "default_measurement": "vendor",
+        "measurements": {
+            "vendor": {
+                "origin": "ASR",
+                "format": "klippel",
+                "quality": "high",
+                "notes": "Keep this note\nAnd this line",
+                "review_published": "2024",
+                "parameters": {"mean_min": 300, "mean_max": 3000},
+                "extras": {"is_equed": False},
+                "data_acquisition": {"air_absorbtion": False},
+                "specifications": {"SPL": {"peak": 110.0, "continuous": 98.0}},
+            },
+            "other": {"origin": "ASR", "format": "klippel"},
+        },
+    }

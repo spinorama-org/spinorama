@@ -19,6 +19,8 @@
 ## ----------------------------------------------------------------------
 
 $ErrorActionPreference = "Stop"
+$RootDir = Split-Path -Parent $PSScriptRoot
+Set-Location $RootDir
 
 $PYVERSION = "3.12"
 
@@ -35,6 +37,7 @@ $missing = @()
 if (-not (Get-Command "python" -ErrorAction SilentlyContinue)) { $missing += "python $PYVERSION (https://www.python.org/downloads/)" }
 if (-not (Get-Command "npm"    -ErrorAction SilentlyContinue)) { $missing += "Node.js / npm (https://nodejs.org/)" }
 if (-not (Get-Command "git"    -ErrorAction SilentlyContinue)) { $missing += "git (https://git-scm.com/)" }
+if (-not (Get-Command "cargo"  -ErrorAction SilentlyContinue)) { $missing += "Rust / cargo" }
 
 if ($missing.Count -gt 0) {
     Write-Host "`nThe following tools are required but not found in PATH:" -ForegroundColor Red
@@ -46,37 +49,29 @@ if ($missing.Count -gt 0) {
 # Verify Python version
 $pyVer = python --version 2>&1
 Write-Host "Detected: $pyVer"
+python -c 'import sys; sys.exit(sys.version_info[:2] != (3, 12))'
+if ($LASTEXITCODE -ne 0) { throw "Python $PYVERSION is required" }
 
 # ------------ PYTHONPATH
-$env:PYTHONPATH = ".\src;.\src\website"
+$env:PYTHONPATH = "$RootDir;$RootDir\src;$RootDir\src\website;$RootDir\scripts"
 
 # ------------ PYTHON VENV
 Write-Host "`n--- Creating Python virtual environment ---"
+if (Test-Path .venv) {
+    & .\.venv\Scripts\python.exe -c 'import sys; sys.exit(sys.version_info[:2] != (3, 12))'
+    if ($LASTEXITCODE -ne 0) { throw "Move the incompatible .venv aside, then rerun setup.ps1" }
+}
 python -m venv .venv
+if ($LASTEXITCODE -ne 0) { throw "Failed to create .venv" }
 & .\.venv\Scripts\Activate.ps1
+$ProjectPython = Join-Path $RootDir ".venv\Scripts\python.exe"
 
 # ------------ PIP PACKAGES
 Write-Host "`n--- Installing Python dependencies ---"
-# setup.py is invoked directly below, so PEP 517 build-system requirements are
-# not installed in an isolated build environment for us. Python 3.12 venvs do
-# not include setuptools by default.
-python -m pip install -U pip setuptools wheel
-$reqFiles = @(
-    "requirements.txt",
-    "requirements-test.txt",
-    "requirements-dev.txt",
-    "requirements-api.txt",
-    "requirements-meta.txt",
-    "requirements-scrape.txt"
-)
-foreach ($req in $reqFiles) {
-    if (Test-Path $req) {
-        Write-Host "Installing $req ..."
-        pip install -U -r $req
-    } else {
-        Write-Host "Skipping $req (not found)" -ForegroundColor Yellow
-    }
-}
+& $ProjectPython -m pip install -U pip
+if ($LASTEXITCODE -ne 0) { throw "Failed to update pip" }
+& $ProjectPython -m pip install -U -r (Join-Path $RootDir "requirements.txt")
+if ($LASTEXITCODE -ne 0) { throw "Failed to install Python dependencies" }
 
 # ------------ NODE PACKAGES
 Write-Host "`n--- Installing Node dependencies ---"
@@ -125,44 +120,11 @@ Copy-Item "node_modules\plotly.js-dist-min\plotly.min.js" "$ASSETS_JS\plotly-$PL
 Write-Host "`n--- Creating build directories ---"
 New-Item -ItemType Directory -Force -Path "build", "dist" | Out-Null
 
-# ------------ COMPILE CYTHON
-Write-Host "`n--- Building Cython extension ---"
-Push-Location src\spinorama\compute_scores_cython
-try {
-    $env:PYTHONPATH = "..\..\.."
-    python setup.py build_ext --inplace
-    # On Windows the extension is a .pyd, not .so
-    $pydFile = Get-ChildItem -Filter "compute_scores_cython.*.pyd" -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($pydFile) {
-        Write-Host "Cython extension built: $($pydFile.Name)"
-    } else {
-        Write-Host "Warning: Cython .pyd not found after build" -ForegroundColor Yellow
-    }
-} finally {
-    Pop-Location
-    $env:PYTHONPATH = ".\src;.\src\website"
-}
-
-# ------------ COMPILE AND INSTALL RUST
-Write-Host "`n--- Building and installing Rust extensions ---"
-if (-not (Get-Command "maturin" -ErrorAction SilentlyContinue)) {
-    throw "maturin not found after dependency installation"
-}
-
-maturin develop --release --manifest-path "src\spinorama\compute_scores_rust\Cargo.toml"
+# ------------ BUILD NATIVE BINARIES
+Write-Host "`n--- Building native generators and API ---"
+cargo build --locked --release --workspace
 if ($LASTEXITCODE -ne 0) {
-    throw "Failed to install compute_scores_rust"
-}
-
-maturin develop --release --manifest-path "src\spinorama\annotations_rust\Cargo.toml"
-if ($LASTEXITCODE -ne 0) {
-    throw "Failed to install annotations_rust"
-}
-
-# Do not silently fall back to the Python implementations after setup.
-python -c "import annotations_rust, compute_scores_rust; from spinorama.plot import annotations; assert annotations._c_place_annotations is not None; print('Rust extensions installed successfully')"
-if ($LASTEXITCODE -ne 0) {
-    throw "Rust extension import verification failed"
+    throw "Failed to build the Rust workspace"
 }
 
 Write-Host "`n--- Setup complete ---" -ForegroundColor Green

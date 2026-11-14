@@ -8,8 +8,7 @@ abstract: >
 
 This project has two audiences: people who want to run the analysis tools and
 people who want to develop or contribute data. The setup script creates the
-complete environment. A smaller installation is also provided for users who
-only need Python analysis or the metadata manager.
+complete environment. The Python environment can also be installed separately.
 
 ## Requirements
 
@@ -18,8 +17,7 @@ only need Python analysis or the metadata manager.
 | Python | 3.12 or 3.13 (`>=3.12,<3.14`) | Python tools and metadata manager |
 | Git | Any recent version | Source checkout and contributions |
 | Node.js/npm | LTS | Website build and JavaScript tests |
-| Rust/cargo | Current stable | Optional scoring extension |
-| maturin | Current | Optional Rust extension build |
+| Rust/cargo | Current stable | Generators, metadata validation, and API |
 | Quarto | Current | Documentation build |
 
 ## Complete setup
@@ -35,9 +33,9 @@ cd spinorama
 ```
 
 On Linux the script uses `apt` for system packages; on macOS it uses Homebrew.
-It creates `.venv`, installs the Python requirement files, installs Node
-dependencies, downloads third-party assets, and builds the optional native
-extensions when their toolchains are available.
+It creates `.venv`, installs `requirements.txt`, installs Node
+dependencies, downloads third-party assets, and builds the Rust generators and API.
+Use `make python-reference` to install the optional Python extensions for parity tests.
 
 Activate the environment in every new shell:
 
@@ -52,7 +50,7 @@ and is normally run from a checkout rather than an installed wheel.
 ### Windows
 
 Install [Python 3.12](https://www.python.org/downloads/),
-[Node.js](https://nodejs.org/), and [Git](https://git-scm.com/), then run:
+[Node.js](https://nodejs.org/), [Git](https://git-scm.com/), and Rust, then run:
 
 ```powershell
 .\scripts\setup.ps1
@@ -67,35 +65,38 @@ $env:PYTHONPATH = "$PWD\src;$PWD\src\website"
 
 The setup script also enables UTF-8 mode for Python on Windows.
 
-## Smaller Python setup
+## Python environment
 
-If the system dependencies and the repository's Python environment already
-exist, install only the runtime and metadata dependencies:
+To install the Python environment separately from the system tools, run:
 
 ```{.shell}
 python3.12 -m venv .venv
 source .venv/bin/activate
-python -m pip install -r requirements.txt -r requirements-meta.txt
-export PYTHONPATH="$PWD/src:$PWD/src/website"
+python -m pip install -r requirements.txt
+export PYTHONPATH="$PWD:$PWD/src:$PWD/src/website:$PWD/scripts"
 ```
 
-Install the test and development requirements when contributing code:
+`requirements.txt` includes runtime, editor, ingestion, development, test, and
+documentation dependencies. To activate the environment and install missing
+dependencies in subsequent Bash or Zsh sessions, source the repository script:
 
 ```{.shell}
-python -m pip install -r requirements-test.txt -r requirements-dev.txt
+source env.sh
 ```
+
+The script also works when sourced through its absolute path from another directory.
+It reuses the current SSH agent and leaves your working directory unchanged.
 
 ## Run the applications
 
-Open the Qt metadata manager with:
+Open the Python GPUI metadata manager with:
 
 ```{.shell}
-python -m metaedit.app
+make metaedit
 ```
 
-Use `python -m metaedit.app --speaker "Brand Model"` to open an existing
-speaker directly. See [Add speaker metadata](03_metadata.qmd) for the complete
-workflow and Git/PR requirements.
+Use `make metaedit SPEAKER="Brand Model"` to open an existing speaker directly.
+See [Add speaker metadata](03_metadata.qmd) for TOML editing and validation.
 
 Compute graphs and preference scores from a directory of measurements with:
 
@@ -181,7 +182,7 @@ Install Quarto separately, then install the Python packages used by the
 documentation examples:
 
 ```{.shell}
-python -m pip install -r manual/requirements-quarto.txt
+python -m pip install -r requirements.txt
 quarto render manual
 ```
 

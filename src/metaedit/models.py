@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple, cast
+from typing import Any, Dict, Optional, cast
 import copy
 
 from pydantic import BaseModel, Field  # type: ignore[reportMissingImports]
@@ -31,8 +31,6 @@ class Specifications(BaseModel):
     impedance: Optional[float] = None
     weight: Optional[float] = None
     size: Optional[Size] = None
-    spl_peak: Optional[float] = None
-    spl_long_term: Optional[float] = None
     # Expanded fields to align with datas.Specifications
     dispersion: Optional[Dispersion] = None
     spl: Optional[SPL] = Field(default=None, alias="SPL")
@@ -54,10 +52,16 @@ class Extras(BaseModel):
     score_penalty: Optional[float] = None
 
 
+class Parameters(BaseModel):
+    mean_min: int
+    mean_max: int
+
+
 class Measurement(BaseModel):
     origin: Optional[str] = None
     format: Optional[str] = None
     quality: Optional[str] = None
+    review: Optional[str] = None
     reviews: Dict[str, str] = Field(default_factory=dict)
     review_published: Optional[str] = None  # YYYYMMDD
     symmetry: Optional[str] = None
@@ -65,9 +69,11 @@ class Measurement(BaseModel):
     extras: Optional[Extras] = None
     notes: Optional[str] = None
     specifications: Optional[Specifications] = None
+    parameters: Optional[Parameters] = None
 
 
 class SpeakerMetadata(BaseModel):
+    name: Optional[str] = None
     brand: str
     model: str
     type: Optional[str] = None
@@ -78,6 +84,7 @@ class SpeakerMetadata(BaseModel):
     picture: Optional[str] = None
     measurements: Dict[str, Measurement] = Field(default_factory=dict)
     default_measurement: Optional[str] = None
+    skip: Optional[bool] = None
 
     @staticmethod
     def convert_legacy_reviews(data: dict) -> dict:
@@ -93,7 +100,7 @@ class SpeakerMetadata(BaseModel):
         return converted
 
     @staticmethod
-    def format_date_for_python(date_str: str) -> str:
+    def format_date_for_metadata(date_str: str) -> str:
         # YYYY-MM-DD -> YYYYMMDD
         if not date_str or len(date_str) != 10:
             return ""
@@ -160,7 +167,8 @@ def export_speaker_metadata(sm: SpeakerMetadata) -> Dict[str, Any]:
 
     Empty values/blocks are pruned. Unknown keys are appended at the end to minimize diffs.
     """
-    raw = sm.model_dump(exclude_none=True, by_alias=True)
+    raw = sm.model_dump(exclude_none=True, by_alias=True, exclude={"picture"})
+    raw["name"] = sm.name or f"{sm.brand} {sm.model}".strip()
 
     # Helper to order dict by a preferred list of keys and then append remaining keys in original order
     def order_keys(src: Dict[str, Any], preferred: list[str]) -> Dict[str, Any]:
@@ -200,9 +208,6 @@ def export_speaker_metadata(sm: SpeakerMetadata) -> Dict[str, Any]:
             "specifications",
         ]
         result = order_keys(meas, pref)
-        # Omit quality field if it's 'high' (default value)
-        if result.get("quality") == "high":
-            result.pop("quality", None)
         return result
 
     # Build top-level with desired order
@@ -230,4 +235,6 @@ def export_speaker_metadata(sm: SpeakerMetadata) -> Dict[str, Any]:
     out = order_keys(raw, top_pref)
 
     # Final prune to remove any empty blocks inserted during ordering
-    return prune_empty(out)
+    result = prune_empty(out)
+    result["price"] = sm.price or ""
+    return result

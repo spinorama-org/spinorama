@@ -47,8 +47,7 @@ This library provides an easy way to view, compare or analyse speakers data. Thi
 | Python | 3.12 | |
 | Node.js / npm | LTS | |
 | git | any | |
-| Rust / cargo | stable | Optional, for the Rust scoring extension |
-| maturin | stable | Optional, `pip install maturin` |
+| Rust / cargo | stable | Native generators, metadata validation, and API |
 
 ### Linux / macOS
 
@@ -57,13 +56,19 @@ This library provides an easy way to view, compare or analyse speakers data. Thi
 ```
 
 This installs system packages (via `apt` on Linux or `brew` on macOS), creates a
-Python virtual environment, installs all dependencies, downloads third-party
-assets, and compiles the Cython and Rust extensions.
+Python virtual environment, installs `requirements.txt`, downloads third-party
+assets, and builds the native Rust generators and API.
+Optional Python reference extensions for parity tests are installed separately
+with `make python-reference`.
+
+All Python dependencies, including editor, test, and documentation tools, are in
+`requirements.txt`. In subsequent Bash or Zsh sessions, run `source env.sh` to
+activate `.venv` and install missing dependencies.
 
 ### Windows (PowerShell)
 
 Install [Python 3.12](https://www.python.org/downloads/),
-[Node.js](https://nodejs.org/) and [git](https://git-scm.com/) manually, then
+[Node.js](https://nodejs.org/), [git](https://git-scm.com/), and Rust manually, then
 run:
 
 ```powershell

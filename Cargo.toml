@@ -10,7 +10,7 @@
 
 [workspace]
 resolver = "3"
-exclude = ["src/spinorama/annotations_rust"]
+exclude = ["src/spinorama/annotations_rust", "src/spinorama/compute_scores_rust"]
 members = [
   "crates/spinorama-api", 
   "crates/spinorama-generate"
