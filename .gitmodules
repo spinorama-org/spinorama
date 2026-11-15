@@ -1,6 +1,6 @@
 [submodule "datas/measurements"]
 	path = datas/measurements
-	url = https://github.com/spinorama-org/measurements.git
+	url = https://github.com/spinorama-org/spinorama-measurements.git
 [submodule "src/graphextract"]
 	path = src/graphextract
 	url = https://github.com/spinorama-org/graphextract.git

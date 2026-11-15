@@ -26,7 +26,7 @@ CPATH_SCRIPTS = f"{CPATH}/scripts"
 # where the metadata around the speakers are
 CPATH_DATAS = f"{CPATH}/datas"
 CPATH_DATAS_ICONS = f"{CPATH_DATAS}/icons"
-CPATH_DATAS_PICTURES = f"{CPATH_DATAS}/pictures"
+CPATH_DATAS_PICTURES = f"{CPATH}/../spinorama-pictures/web"
 CPATH_DATAS_SPEAKERS = f"{CPATH_DATAS}/measurements"
 CPATH_DATAS_EQ = f"{CPATH_DATAS}/eq"
 CPATH_DATAS_HEADPHONES = f"{CPATH_DATAS}/headphones"

@@ -57,13 +57,17 @@ wasm: ## Force a release WASM rebuild and copy browser assets into dist.
 	cp $(WASM_BUILD_DIR)/annotations_rust.js $(WASM_DIST_DIR)/annotations_rust.js
 	cp $(WASM_BUILD_DIR)/annotations_rust_bg.wasm $(WASM_DIST_DIR)/annotations_rust_bg.wasm
 
-build: ## Build the complete optimized production website.
+.PHONY: pictures
+pictures: ## Copy website pictures from the sibling spinorama-pictures/web checkout.
+	sh scripts/update_pictures.sh
+
+build: pictures ## Build the complete optimized production website.
 	$(PYTHON) scripts/generate_html.py --optim
 
-build-dev: ## Build fast local assets and reuse existing speaker pages.
+build-dev: pictures ## Build fast local assets and reuse existing speaker pages.
 	$(PYTHON) scripts/generate_html.py --dev --sitedev=$(DEV_URL) --skip-speakers
 
-build-dev-full: ## Build the complete local website, including speaker pages.
+build-dev-full: pictures ## Build the complete local website, including speaker pages.
 	$(PYTHON) scripts/generate_html.py --dev --sitedev=$(DEV_URL)
 
 rebuild: rust wasm build-dev ## Rebuild native Rust, WASM, and local website assets.

@@ -85,3 +85,6 @@ logs
 
 # Generated manual assets
 /manual/site_libs/
+
+# Product pictures belong in the sibling spinorama-pictures repository.
+/datas/pictures/
