@@ -88,3 +88,6 @@ logs
 
 # Confidential support fixtures live outside the public repository history.
 /datas/private-support/
+
+# Product pictures belong in the sibling spinorama-pictures repository.
+/datas/pictures/

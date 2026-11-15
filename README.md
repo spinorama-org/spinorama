@@ -1,7 +1,8 @@
 # Repository checkout
 
-This repository contains code, metadata, EQ files and pictures. Raw measurements
-and real-data fixtures are in the private `spinorama-org/measurements` submodule
+This repository contains code, metadata, and EQ files. Product pictures live in
+`spinorama-pictures`; do not add them under `datas/pictures`. Raw measurements
+and real-data fixtures are in the private `spinorama-org/spinorama-measurements` submodule
 at `datas/measurements`. Access to that repository is required for data-dependent
 builds, tests and tools. Cloning this public code repository alone grants no data access.
 
@@ -11,10 +12,22 @@ cd spinorama
 git submodule update --init --recursive
 ```
 
+Website product pictures come from `web/` in a separate sibling checkout.
+From the `spinorama` directory, run:
+
+```sh
+git clone https://github.com/spinorama-org/spinorama-pictures.git ../spinorama-pictures
+```
+
+`make build`, `make build-dev`, `make build-dev-full`, and `make build-dev-site`
+copy these prepared images to `dist/pictures` without converting them. Run
+`make pictures` to update only pictures and manual images. If the sibling
+`web/` directory is missing, the script warns with clone instructions and
+continues without updating product pictures.
+
 For an existing checkout, use `git pull --recurse-submodules` followed by
 `git submodule update --init --recursive`. The submodule is pinned to a commit;
 update and commit that pointer deliberately when publishing data changes.
-All three repositories start with identical `main` and `develop` branches and no old history.
 
 Headphone data, `tests/datas`, extraction fixtures, `experimental` notebooks and
 `output.json` use relative links into the private submodule. They become available

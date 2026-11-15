@@ -18,50 +18,44 @@
 
 set -eu
 
-OS=$(uname)
-ARCH=$(uname -a | awk '{print $NF}')
-
-CONVERT=convert
-if test "$OS" = "Darwin"  -a "$ARCH" = "arm64" ; then
-    CONVERT="/opt/homebrew/bin/magick"
-fi
-
-# convert is from imagemagick package
-sourcedir=datas
+# Resolve the sibling checkout independently of the caller's working directory.
+root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+cd "$root"
+pictures_root="$(dirname "$root")/spinorama-pictures"
+sourcedir="$pictures_root/web"
 targetdir=dist
-# The production update does not render Quarto. Install the manual's images
-# explicitly so existing /docs/images/... links work on every picture update.
-# Keep diagrams at their original resolution instead of thumbnailing them.
-mkdir -p "${targetdir}/docs/images" || exit 1
-cp -pR manual/images/. "${targetdir}/docs/images/" || exit 1
 
-mkdir -p ${targetdir}/pictures
-for d in "${sourcedir}/pictures"; do
-    find $d -type f -name '*.png'| while read pict; do
-	smaller=$targetdir${pict#$sourcedir}
-        for t in "jpg" "webp"; do
-	    smallert=${smaller%.png}.${t}
-	    if ! test -f "$smallert" || test "$pict" -nt "$smallert"; then
-	        "$CONVERT" "$pict" -strip -define jpeg:size=300x500  -thumbnail '400x600>' -gravity center -extent 400x600 "$smallert";
-	    fi
+# Install the manual's images without changing their resolution.
+mkdir -p "${targetdir}/docs/images" "${targetdir}/pictures"
+cp -pR manual/images/. "${targetdir}/docs/images/"
+
+if [ ! -d "$sourcedir" ]; then
+    cat >&2 <<EOF
+WARNING: Website pictures are unavailable: $sourcedir
+Clone the picture repository alongside this checkout:
+  git clone https://github.com/spinorama-org/spinorama-pictures.git "$pictures_root"
+Then rerun scripts/update_pictures.sh. Continuing without updating product pictures.
+EOF
+else
+    # web/ already contains the website variants; preserve their names and bytes.
+    find "$sourcedir" -type f \( -name '*.png' -o -name '*.jpg' -o -name '*.jpeg' -o -name '*.webp' -o -name '*.svg' -o -name '*.ico' \) -exec sh -eu -c '
+        source_root=$1
+        destination_root=$2
+        shift 2
+        for picture do
+            relative=${picture#"$source_root"/}
+            target="$destination_root/$relative"
+            if [ -d "$target" ]; then
+                echo "Cannot copy picture: destination is a directory: $target" >&2
+                exit 1
+            fi
+            mkdir -p "$(dirname "$target")"
+            if [ ! -f "$target" ] || ! cmp -s "$picture" "$target"; then
+                cp -p "$picture" "$target"
+            fi
         done
-    done
-    find $d -type f -name '*.jpg'| while read pict; do
-        smaller=$targetdir${pict#$sourcedir}
-        for t in "jpg" ; do
-	    smallert=${smaller%.jpg}.${t}
-	    if ! test -f "$smallert" || test "$pict" -nt "$smallert"; then
-	        "$CONVERT" "$pict" -strip -define jpeg:size=300x500  -thumbnail '400x600>' -gravity center -extent 400x600 "$smallert";
-	    fi
-        done
-        for t in "webp"; do
-	    smallerw=${smaller%.jpg}.${t}
-	    if ! test -f "$smallerw" || test "$pict" -nt "$smallerw"; then
-	        "$CONVERT" "$pict" -strip -define jpeg:size=300x500  -thumbnail '400x600>' -gravity center -extent 400x600 "$smallerw";
-	    fi
-        done
-    done
-done
+    ' sh "$sourcedir" "${targetdir}/pictures" {} +
+fi
 # Copy only browser image assets. Notebooks and archives must not enter dist.
 for icon in datas/icons/*; do
     target="dist/pictures/$(basename "$icon")"

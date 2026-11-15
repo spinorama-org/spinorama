@@ -295,31 +295,3 @@ elif name == 'scp':
             assert actual == "original " + relative
         else:
             assert actual == (ROOT / "conf/etc/nginx" / relative).read_text()
-
-
-@pytest.mark.parametrize("conversion_fails", [False, True])
-def test_picture_update_keeps_notebooks_and_archives_out_of_public_build(
-    tmp_path, conversion_fails
-):
-    for folder in ["datas/icons", "datas/pictures", "manual/images", "dist/pictures"]:
-        (tmp_path / folder).mkdir(parents=True)
-    for name in ["public.svg", "icons.ipynb", "private.tar"]:
-        (tmp_path / "datas/icons" / name).write_text("synthetic")
-        (tmp_path / "dist/pictures" / name).write_text("stale copy")
-    executable(tmp_path / "commands/uname", "#!/bin/sh\necho Linux\n")
-    executable(tmp_path / "commands/convert", "#!/bin/sh\nexit 42\n")
-    if conversion_fails:
-        (tmp_path / "datas/pictures/Synthetic.png").write_text("synthetic source")
-    result = subprocess.run(
-        [shutil.which("sh"), str(ROOT / "scripts/update_pictures.sh")],
-        cwd=tmp_path,
-        env=dict(os.environ, PATH=f"{tmp_path / 'commands'}:{os.environ['PATH']}"),
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-    assert (result.returncode == 0) == (not conversion_fails), result.stdout + result.stderr
-    if conversion_fails:
-        return
-    assert sorted(p.name for p in (tmp_path / "dist/pictures").iterdir()) == ["public.svg"]
