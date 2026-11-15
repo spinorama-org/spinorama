@@ -14,7 +14,7 @@ complete environment. The Python environment can also be installed separately.
 
 | Tool | Version | Required for |
 |---|---|---|
-| Python | 3.12 or 3.13 (`>=3.12,<3.14`) | Python tools and metadata manager |
+| Python | 3.12 (setup scripts) | Python tools and metadata manager |
 | Git | Any recent version | Source checkout and contributions |
 | Node.js/npm | LTS | Website build and JavaScript tests |
 | Rust/cargo | Current stable | Generators, metadata validation, and API |
@@ -29,28 +29,33 @@ Clone the repository and run the setup script from its root:
 ```{.shell}
 git clone https://github.com/spinorama-org/spinorama.git
 cd spinorama
-./scripts/setup.sh
+make setup
 ```
 
-On Linux the script uses `apt` for system packages; on macOS it uses Homebrew.
-It creates `.venv`, installs `requirements.txt`, installs Node
-dependencies, downloads third-party assets, and builds the Rust generators and API.
-Use `make python-reference` to install the optional Python extensions for parity tests.
+`make install` installs only dependencies: Python packages in `.venv`, a minimal
+Rust toolchain through user-local rustup, and JavaScript packages from the lockfile.
+`make setup` also prepares website assets and builds the Rust generators and API.
+Neither command installs system packages or runs linting. Install Python 3.12,
+Node.js/npm, Git, and a C compiler/linker beforehand. Set `SPINORAMA_PYTHON` to
+select a Python executable. Existing `CARGO_HOME` and `RUSTUP_HOME` are respected;
+the defaults are `~/.cargo` and `~/.rustup`.
 
-Activate the environment in every new shell:
+Use `make install-dev` for Python test and lint tools, rustfmt, and Clippy. Use
+`make python-reference` for optional Python extensions. Selenium browser tests
+need `python -m pip install -e '.[browser]'` in the activated environment.
+Run `make python-reference` before `make test-python` for the full Python
+reference suite; native Rust tests do not need Python extensions.
+
+Activate the environment in every new Bash or Zsh session:
 
 ```{.shell}
-source .venv/bin/activate
-export PYTHONPATH="$PWD/src:$PWD/src/website${PYTHONPATH:+:$PYTHONPATH}"
+source env.sh
 ```
-
-The `PYTHONPATH` setting is needed because the repository uses a `src` layout
-and is normally run from a checkout rather than an installed wheel.
 
 ### Windows
 
 Install [Python 3.12](https://www.python.org/downloads/),
-[Node.js](https://nodejs.org/), [Git](https://git-scm.com/), and Rust, then run:
+[Node.js](https://nodejs.org/), [Git](https://git-scm.com/), and MSVC Build Tools, then run:
 
 ```powershell
 .\scripts\setup.ps1
@@ -63,7 +68,8 @@ Activate the environment and set the import path in each PowerShell session:
 $env:PYTHONPATH = "$PWD\src;$PWD\src\website"
 ```
 
-The setup script also enables UTF-8 mode for Python on Windows.
+The setup script installs user-local rustup and enables UTF-8 mode for the current
+PowerShell session. Pass `-InstallOnly` to skip assets and native compilation.
 
 ## Python environment
 
@@ -76,9 +82,9 @@ python -m pip install -r requirements.txt
 export PYTHONPATH="$PWD:$PWD/src:$PWD/src/website:$PWD/scripts"
 ```
 
-`requirements.txt` includes runtime, editor, ingestion, development, test, and
-documentation dependencies. To activate the environment and install missing
-dependencies in subsequent Bash or Zsh sessions, source the repository script:
+`requirements.txt` includes the Python runtime and metadata editor dependencies.
+Development, browser, and reference tools are opt-in extras in `pyproject.toml`.
+To activate the installed environment without downloading anything, source:
 
 ```{.shell}
 source env.sh
@@ -101,6 +107,7 @@ See [Add speaker metadata](03_metadata.qmd) for TOML editing and validation.
 Compute graphs and preference scores from a directory of measurements with:
 
 ```{.shell}
+python -m pip install -e '.[reference]'
 python scripts/compute_spin.py /path/to/measurement-data
 ```
 
@@ -178,11 +185,9 @@ Use `./update_headphones.sh --help` for all options.
 
 ## Build the documentation
 
-Install Quarto separately, then install the Python packages used by the
-documentation examples:
+Install Quarto separately, then render the manual:
 
 ```{.shell}
-python -m pip install -r requirements.txt
 quarto render manual
 ```
 

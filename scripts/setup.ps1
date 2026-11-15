@@ -1,3 +1,5 @@
+param([switch]$InstallOnly)
+
 # A library to display spinorama charts
 #
 # Copyright (C) 2020-2025 Pierre Aubert pierre(at)spinorama(dot)org
@@ -29,15 +31,13 @@ $PYVERSION = "3.12"
 # See https://docs.python.org/3/using/windows.html#win-utf8-mode
 #     https://docs.python.org/3/using/cmdline.html#envvar-PYTHONUTF8
 $env:PYTHONUTF8 = "1"
-[System.Environment]::SetEnvironmentVariable("PYTHONUTF8", "1", "User")
-Write-Host "Set PYTHONUTF8=1 (session + user environment)"
+Write-Host "Set PYTHONUTF8=1 (current session)"
 
 # ------------ CHECK PREREQUISITES
 $missing = @()
 if (-not (Get-Command "python" -ErrorAction SilentlyContinue)) { $missing += "python $PYVERSION (https://www.python.org/downloads/)" }
 if (-not (Get-Command "npm"    -ErrorAction SilentlyContinue)) { $missing += "Node.js / npm (https://nodejs.org/)" }
 if (-not (Get-Command "git"    -ErrorAction SilentlyContinue)) { $missing += "git (https://git-scm.com/)" }
-if (-not (Get-Command "cargo"  -ErrorAction SilentlyContinue)) { $missing += "Rust / cargo" }
 
 if ($missing.Count -gt 0) {
     Write-Host "`nThe following tools are required but not found in PATH:" -ForegroundColor Red
@@ -68,63 +68,57 @@ $ProjectPython = Join-Path $RootDir ".venv\Scripts\python.exe"
 
 # ------------ PIP PACKAGES
 Write-Host "`n--- Installing Python dependencies ---"
-& $ProjectPython -m pip install -U pip
-if ($LASTEXITCODE -ne 0) { throw "Failed to update pip" }
-& $ProjectPython -m pip install -U -r (Join-Path $RootDir "requirements.txt")
+& $ProjectPython -m pip install -r (Join-Path $RootDir "requirements.txt")
 if ($LASTEXITCODE -ne 0) { throw "Failed to install Python dependencies" }
 
-# ------------ NODE PACKAGES
-Write-Host "`n--- Installing Node dependencies ---"
-npm install .
-
-# ------------ LINT
-Write-Host "`n--- Running flake8 lint check ---"
-flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --exclude .venv
-
-# ------------ 3RD PARTIES
-Write-Host "`n--- Installing 3rd-party assets ---"
-
-# Versions must match scripts/update_3rdparties.sh
-$PLOTLY      = "3.4.0"
-$HANDLEBARS  = "4.7.8"
-$BULMA       = "1.0.4"
-$FUSE        = "7.0.0"
-
-$ASSETS      = ".\dist"
-$ASSETS_JS   = "$ASSETS\js3rd"
-$ASSETS_CSS  = "$ASSETS\css"
-$ASSETS_JSON = "$ASSETS\json"
-
-New-Item -ItemType Directory -Force -Path $ASSETS, $ASSETS_JS, $ASSETS_CSS, $ASSETS_JSON | Out-Null
-
-# Handlebars
-$hbsFile = "$ASSETS_JS\handlebars-$HANDLEBARS.min.js"
-if (-not (Test-Path $hbsFile)) {
-    Write-Host "Downloading Handlebars $HANDLEBARS ..."
-    Invoke-WebRequest -Uri "https://cdn.jsdelivr.net/npm/handlebars@$HANDLEBARS/dist/handlebars.min.js" -OutFile $hbsFile
+# ------------ USER-LOCAL RUST
+if (-not $env:CARGO_HOME) { $env:CARGO_HOME = Join-Path $env:USERPROFILE ".cargo" }
+if (-not $env:RUSTUP_HOME) { $env:RUSTUP_HOME = Join-Path $env:USERPROFILE ".rustup" }
+$env:PATH = "$(Join-Path $env:CARGO_HOME 'bin');$env:PATH"
+$Rustup = Join-Path $env:CARGO_HOME "bin\rustup.exe"
+if (-not (Test-Path $Rustup)) {
+    $RustTarget = if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq "Arm64") {
+        "aarch64-pc-windows-msvc"
+    } else {
+        "x86_64-pc-windows-msvc"
+    }
+    $Installer = Join-Path ([System.IO.Path]::GetTempPath()) ("rustup-" + [guid]::NewGuid() + ".exe")
+    try {
+        Invoke-WebRequest -Uri "https://static.rust-lang.org/rustup/dist/$RustTarget/rustup-init.exe" -OutFile $Installer
+        & $Installer -y --profile minimal --default-toolchain stable --no-modify-path
+        if ($LASTEXITCODE -ne 0) { throw "Failed to install rustup" }
+    } finally {
+        Remove-Item $Installer -ErrorAction SilentlyContinue
+    }
+} else {
+    & $Rustup show active-toolchain
+    if ($LASTEXITCODE -ne 0) {
+        & $Rustup toolchain install stable --profile minimal
+        if ($LASTEXITCODE -ne 0) { throw "Failed to install Rust stable" }
+        & $Rustup default stable
+        if ($LASTEXITCODE -ne 0) { throw "Failed to select Rust stable" }
+    }
 }
 
-# Bulma (compile from SCSS)
-npm install bulma
-npx sass --load-path=node_modules src/website/bulma4spin.scss "dist\css\bulma-$BULMA.min.css" --style=compressed --no-source-map
-
-# Fuse.js
-npm install fuse.js
-Copy-Item "node_modules\fuse.js\dist\fuse.min.mjs" "$ASSETS_JS\fuse-$FUSE.min.mjs" -Force
-
-# Plotly
-npm install plotly.js-dist-min
-Copy-Item "node_modules\plotly.js-dist-min\plotly.min.js" "$ASSETS_JS\plotly-$PLOTLY.min.mjs" -Force
-
-# ------------ CREATE DIRECTORIES
-Write-Host "`n--- Creating build directories ---"
+# ------------ LOCKED NODE PACKAGES
+npm ci
+if ($LASTEXITCODE -ne 0) { throw "Failed to install Node dependencies" }
 New-Item -ItemType Directory -Force -Path "build", "dist" | Out-Null
+if ($InstallOnly) { return }
+
+# ------------ WEBSITE ASSETS
+# Read the same asset versions as the Unix script and HTML generator.
+$Versions = @{}
+Get-Content (Join-Path $PSScriptRoot "update_3rdparties.sh") | ForEach-Object {
+    if ($_ -match '^(HANDLEBARS|BULMA|FUSE)=(.+)$') { $Versions[$Matches[1]] = $Matches[2] }
+}
+New-Item -ItemType Directory -Force -Path "dist/js3rd", "dist/css", "dist/json" | Out-Null
+Copy-Item "node_modules/handlebars/dist/handlebars.min.js" "dist/js3rd/handlebars-$($Versions['HANDLEBARS']).min.js" -Force
+Copy-Item "node_modules/fuse.js/dist/fuse.min.mjs" "dist/js3rd/fuse-$($Versions['FUSE']).min.mjs" -Force
+npx --no-install sass --load-path=node_modules src/website/bulma4spin.scss "dist/css/bulma-$($Versions['BULMA']).min.css" --style=compressed --no-source-map
+if ($LASTEXITCODE -ne 0) { throw "Failed to compile website CSS" }
 
 # ------------ BUILD NATIVE BINARIES
-Write-Host "`n--- Building native generators and API ---"
-cargo build --locked --release --workspace
-if ($LASTEXITCODE -ne 0) {
-    throw "Failed to build the Rust workspace"
-}
-
+& (Join-Path $env:CARGO_HOME "bin/cargo.exe") build --locked --release --workspace
+if ($LASTEXITCODE -ne 0) { throw "Failed to build the Rust workspace" }
 Write-Host "`n--- Setup complete ---" -ForegroundColor Green

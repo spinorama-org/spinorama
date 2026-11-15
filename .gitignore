@@ -85,3 +85,6 @@ logs
 
 # Generated manual assets
 /manual/site_libs/
+
+# Confidential support fixtures live outside the public repository history.
+/datas/private-support/

@@ -525,7 +525,7 @@ def place_annotations(
     trace_segments = tuple(trace_segments)
     if _c_place_annotations is None:
         raise RuntimeError(
-            "The Rust annotation solver is required; run scripts/setup.sh to install the Maturin extension."
+            "The Rust annotation solver is required; run make python-reference to install the optional extension."
         )
 
     if _c_place_annotations is not None:

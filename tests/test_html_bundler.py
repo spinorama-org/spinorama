@@ -221,3 +221,29 @@ import {
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_obsolete_bundles_are_pruned_only_after_all_html_references_disappear(tmp_path):
+    scripts = tmp_path / "js"
+    scripts.mkdir()
+    (tmp_path / "index.html").write_text('<script src="/js/meta-v8.min.js"></script>')
+    (tmp_path / "legacy.html").write_text('<script src="/js/search-v6.min.js"></script>')
+    for name in ["meta-v8.min.js", "meta-v7.min.js", "search-v7.min.js",
+                 "search-v6.min.js", "meta-v6.min.js", "external-v7.min.js"]:
+        (scripts / name).write_text("synthetic")
+    removed = generate_html.prune_obsolete_js(str(tmp_path), "v8")
+    assert sorted(Path(path).name for path in removed) == ["meta-v7.min.js", "search-v7.min.js"]
+    assert (scripts / "meta-v8.min.js").exists()
+    assert (scripts / "meta-v6.min.js").exists(), "Retain dependencies of any referenced bundle version"
+    assert (scripts / "external-v7.min.js").exists(), "Do not delete assets outside the generated module list"
+
+
+def test_required_speaker_render_failure_is_fatal(monkeypatch):
+    def fail_render(*args):
+        raise KeyError("synthetic required output")
+
+    monkeypatch.setattr(generate_html, "generate_measurement", fail_render)
+    with unittest.TestCase().assertRaises(KeyError):
+        generate_html.generate_speaker(
+            {}, {}, "", False, {}, "Synthetic", {"Lab": {"v1": {}}}, None, None
+        )

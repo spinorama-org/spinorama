@@ -5,13 +5,14 @@
 # Downstream manifests inherit with `dep.workspace = true` so a
 # version bump happens in exactly one place.
 #
-# The PyO3 cdylib trees under src/spinorama/*_rust are deliberately
-# NOT members; they keep their own manifests.
+# The optional Python score extension keeps its own manifest.
+# The shared annotation solver is a workspace member with opt-in bindings.
 
 [workspace]
 resolver = "3"
-exclude = ["src/spinorama/annotations_rust", "src/spinorama/compute_scores_rust"]
+exclude = ["src/spinorama/compute_scores_rust"]
 members = [
+  "crates/spinorama-annotations",
   "crates/spinorama-api", 
   "crates/spinorama-generate"
 ]
@@ -22,7 +23,7 @@ edition = "2024"
 
 [workspace.dependencies]
 anyhow = "1"
-annotations_rust = { path = "src/spinorama/annotations_rust", default-features = false }
+annotations_rust = { path = "crates/spinorama-annotations", default-features = false }
 autoeq-workflow = { version = "0.5", git = "https://github.com/pierreaubert/autoeq", default-features = false }
 base64 = "0.22"
 d3rs = { package = "gpui-d3rs", version = "0.11", git = "https://github.com/pierreaubert/gpui-toolkit", default-features = false }
@@ -33,13 +34,16 @@ image = { version = "0.25", default-features = false, features = ["png", "webp"]
 mimalloc = "0.1"
 ndarray = "0.17"
 num-complex = "0.4"
+pyo3 = "0.29"
 rayon = "1"
-rusqlite = { version = "0.37", features = ["bundled"] }
+rusqlite = { version = "0.41.1", features = ["bundled"] }
 rustfft = "6"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+serde-wasm-bindgen = "0.6"
 sha2 = "0.10"
 tar = "0.4"
 toml = "0.9"
+wasm-bindgen = "0.2"
 webp = { version = "0.3", default-features = false }
-zip = { version = "8", default-features = false, features = ["deflate-flate2", "bzip2"] }
+zip = { version = "9.5.1", default-features = false, features = ["deflate-flate2", "bzip2"] }

@@ -169,7 +169,9 @@ fn api_smoke() {
         .env("SPINORAMA_COMPARE_CACHE", dir.join("compare-cache"))
         .env("SPINORAMA_FINGERPRINT_SECRET", "test-secret")
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(Stdio::from(
+            std::fs::File::create(dir.join("events.jsonl")).expect("event log"),
+        ))
         .spawn()
         .expect("spawn server");
     let _server = Server(child);
@@ -281,6 +283,68 @@ fn api_smoke() {
          &b_speaker=Old%20Speaker&b_origin=ASR&b_version=asr",
     );
     assert_eq!(status, 400, "non-whitelisted measurement rejected");
+
+    // Reject oversized and ambiguous framing before allocating or routing a body.
+    for headers in [
+        format!("X-Oversized: {}\r\n", "a".repeat(33 * 1024)),
+        "Content-Length: 1048577\r\n".to_owned(),
+        "Content-Length: 0\r\nContent-Length: 1\r\n".to_owned(),
+        "Transfer-Encoding: chunked\r\n".to_owned(),
+    ] {
+        let mut stream = TcpStream::connect(("127.0.0.1", PORT)).expect("connect");
+        stream
+            .set_read_timeout(Some(Duration::from_secs(6)))
+            .expect("timeout");
+        let _ = stream.write_all(format!("POST /v1/validate HTTP/1.1\r\n{headers}\r\n").as_bytes());
+        let mut raw = String::new();
+        let _ = stream.read_to_string(&mut raw);
+        assert!(raw.starts_with("HTTP/1.1 400"), "rejected framing: {raw}");
+    }
+    // More incomplete clients than the connection cap must be closed promptly;
+    // accepted clients have a total request deadline, including trickled bytes.
+    let mut idle = Vec::new();
+    for _ in 0..40 {
+        let mut stream = TcpStream::connect(("127.0.0.1", PORT)).expect("idle connect");
+        stream
+            .set_read_timeout(Some(Duration::from_secs(1)))
+            .expect("timeout");
+        let _ = stream.write_all(b"GET /docs HTTP/1.1\r\nX-Incomplete: ");
+        idle.push(stream);
+    }
+    std::thread::sleep(Duration::from_millis(200));
+    let mut closed = 0;
+    for stream in &mut idle {
+        let mut byte = [0];
+        stream.set_nonblocking(true).expect("nonblocking");
+        match stream.read(&mut byte) {
+            Ok(0) => closed += 1,
+            Err(e) if e.kind() == std::io::ErrorKind::ConnectionReset => closed += 1,
+            _ => {}
+        }
+    }
+    assert!(closed >= 8, "excess connections closed: {closed}");
+    std::thread::sleep(Duration::from_secs(6));
+    assert_eq!(
+        request("/docs", None).0,
+        200,
+        "idle permits released by deadlines"
+    );
+    let log = std::fs::read_to_string(dir.join("events.jsonl")).expect("events");
+    let events: Vec<serde_json::Value> = log
+        .lines()
+        .filter_map(|line| serde_json::from_str(line).ok())
+        .collect();
+    assert!(
+        events
+            .iter()
+            .any(|e| e["authentication_failed"] == true && e["status"] == 401)
+    );
+    assert!(events.iter().any(|e| e["key_id"] == key_id
+        && e["request_id"].is_string()
+        && e["duration_ms"].is_number()
+        && e["timestamp_unix_ms"].is_number()));
+    assert!(events.iter().any(|e| e["render_outcome"] == "hit"));
+    assert!(!log.contains(&token), "events never contain bearer tokens");
 
     let listed = run_keys(&dir, &["list"]);
     assert!(!listed.contains(&token), "list must not leak the token");

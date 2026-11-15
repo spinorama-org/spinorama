@@ -40,6 +40,10 @@ known_measurements = [
     "SPL Vertical Radar",
 ]
 
+import pytest
+
+pytest.importorskip("selenium", reason="Install the browser extra to run Selenium tests")
+
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait, Select

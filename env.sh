@@ -14,12 +14,9 @@ fi
 export SPIN
 
 _spinorama_env() {
-    if [ ! -e "$SPIN/.venv" ]; then
-        if ! command -v python3.12 >/dev/null 2>&1; then
-            echo "Python 3.12 is required; run scripts/setup.sh first." >&2
-            return 1
-        fi
-        python3.12 -m venv "$SPIN/.venv" || return
+    if [ ! -d "$SPIN/.venv" ]; then
+        echo "Run make install in $SPIN before sourcing env.sh." >&2
+        return 1
     fi
     if ! "$SPIN/.venv/bin/python" -c 'import sys; sys.exit(sys.version_info[:2] != (3, 12))'; then
         echo "$SPIN/.venv must use Python 3.12; move it aside and run scripts/setup.sh." >&2
@@ -27,12 +24,14 @@ _spinorama_env() {
     fi
     # shellcheck source=/dev/null
     source "$SPIN/.venv/bin/activate" || return
-    "$SPIN/.venv/bin/python" -m pip install --quiet -r "$SPIN/requirements.txt" || return
     export PYTHONPATH="$SPIN:$SPIN/src:$SPIN/src/website:$SPIN/scripts"
 
-    if [ ! -d "$SPIN/node_modules" ]; then
-        npm --prefix "$SPIN" install || return
-    fi
+    export CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}"
+    export RUSTUP_HOME="${RUSTUP_HOME:-$HOME/.rustup}"
+    case ":$PATH:" in
+        *":$CARGO_HOME/bin:"*) ;;
+        *) export PATH="$CARGO_HOME/bin:$PATH" ;;
+    esac
     case ":$PATH:" in
         *":$SPIN/node_modules/.bin:"*) ;;
         *) export PATH="$SPIN/node_modules/.bin:$PATH" ;;

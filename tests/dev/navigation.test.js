@@ -31,7 +31,8 @@ beforeEach(async () => {
     page.on('response', (response) => {
         const url = new URL(response.url());
         if (url.origin !== site.origin) return;
-        if (response.status() >= 400) failures.push(`${response.status()} ${response.url()}`);
+        const retryableRender = response.status() === 503 && url.pathname === '/graph-render/graph.webp';
+        if (response.status() >= 400 && !retryableRender) failures.push(`${response.status()} ${response.url()}`);
         if (url.pathname.startsWith('/js/')) modules.add(url.pathname);
     });
     page.on('requestfailed', (request) => {
@@ -42,7 +43,7 @@ beforeEach(async () => {
     });
     page.on('pageerror', (error) => failures.push(error.stack || error.message));
     page.on('console', (message) => {
-        if (message.type() === 'error') failures.push(message.text());
+        if (message.type() === 'error' && !message.text().includes('server responded with a status of 503')) failures.push(message.text());
     });
 });
 
@@ -70,6 +71,50 @@ async function openHome() {
 }
 
 describe(`deployed website at ${site.origin}`, () => {
+    test('trend toggles replace the picture with different server-rendered content', async () => {
+        const metadataResponse = await context.request.get(new URL('/json/metadata.json', site).href);
+        expect(metadataResponse.status()).toBe(200);
+        const metadata = await metadataResponse.json();
+        // Select from the live catalogue; speakers and default versions change.
+        const candidate = Object.entries(metadata).find(([, speaker]) => {
+            const measurement = speaker.measurements?.[speaker.default_measurement];
+            return measurement?.quality === 'high' && measurement.format === 'klippel';
+        });
+        expect(candidate, 'A full Klippel spin is available').toBeTruthy();
+        const [name, speaker] = candidate;
+        const version = speaker.default_measurement;
+        const origin = speaker.measurements[version].origin.replace(/^Vendors-/, '');
+        const path = [name, origin, version, 'CEA2034.html'].map(encodeURIComponent).join('/');
+        const response = await page.goto(new URL(`/speakers/${path}`, site).href);
+        expect(response.status()).toBe(200);
+        await page.waitForFunction(() => document.querySelector('.graph img')?.complete);
+        const trend = page.locator('#graph-options [name="trend"]');
+        const zones = page.locator('#graph-options [name="zones"]');
+        const rendered = (value) => page.waitForResponse((picture) => {
+            const url = new URL(picture.url());
+            return picture.status() === 200 && url.pathname === '/graph-render/graph.webp'
+                && url.searchParams.get('trend') === value
+                && url.searchParams.get('zones') === '0';
+        });
+        const initialRender = rendered('1');
+        await zones.uncheck();
+        expect((await initialRender).status()).toBe(200);
+        const withoutTrends = rendered('0');
+        await trend.uncheck();
+        const off = await withoutTrends;
+        expect(off.status()).toBe(200);
+        const offBody = await off.body();
+        const withTrends = rendered('1');
+        await trend.check();
+        const on = await withTrends;
+        expect(on.status()).toBe(200);
+        expect(await on.body()).not.toEqual(offBody);
+        await expect.poll(() => page.locator('.graph img').evaluate((image) => (
+            image.complete && image.naturalWidth > 0
+        ))).toBe(true);
+        expect(new URL(await page.locator('.graph img').getAttribute('data-render-url'), site).searchParams.get('trend')).toBe('1');
+    });
+
     test('loads the homepage and its misc and pagination modules', async () => {
         await openHome();
         expect(await page.locator(cards).count()).toBeGreaterThan(0);

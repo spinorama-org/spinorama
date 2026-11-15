@@ -5,12 +5,21 @@ requires = ["setuptools", "wheel"]
 name = "spinorama"
 version = "2.0.0"
 description = "Database of speaker measurements"
+dynamic = ["dependencies"]
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
 license = "GPL-3.0-or-later"
 authors = [
     { name = "Pierre Aubert", email = "pierre@spinorama.org" },
 ]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.3.4", "pytest-cov", "ruff"]
+browser = ["selenium>=4.28.1"]
+reference = ["cython", "maturin", "setuptools", "wheel", "kaleido>=1.0.0"]
+
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}
 
 [project.urls]
 Homepage = "https://www.spinorama.org"

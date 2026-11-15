@@ -49,8 +49,17 @@ else
     echo "OK checking for dev site in prod"
 fi
 python3 ./scripts/check_public_dist.py ./dist || exit 1
+# Refresh the private bundles used to render graph-option changes too.
+sh "$(dirname "$0")/update_graph_data_dev.sh" || exit 1
 # Install and validate the dev cache policy before uploading site assets.
 sh "$(dirname "$0")/deploy_nginx_dev.sh" || exit 1
 # copy
 echo "Sync"
-rsync -arvz --delete ./dist/* "$TARGET"
+rsync -arvz --delete ./dist/ "$TARGET/" || exit 1
+changes=$(rsync -rcln --delete --itemize-changes ./dist/ "$TARGET/") || exit 1
+if [ -n "$changes" ]; then
+    echo "KO: destination differs from the checked public tree" >&2
+    printf '%s\n' "$changes" >&2
+    exit 1
+fi
+echo "OK: destination contents verified"

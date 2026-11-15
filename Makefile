@@ -5,6 +5,8 @@
 PYTHON ?= $(CURDIR)/.venv/bin/python3
 MATURIN ?= $(CURDIR)/.venv/bin/maturin
 CARGO ?= cargo
+RUSTUP ?= rustup
+export PATH := $(or $(CARGO_HOME),$(HOME)/.cargo)/bin:$(PATH)
 NPM ?= npm
 GPUI_TOOLKIT_DIR ?= $(abspath $(CURDIR)/../../gpui-toolkit)
 RENDER_TARGET_DIR ?= $(GPUI_TOOLKIT_DIR)/target
@@ -16,7 +18,7 @@ JOBS ?= 1
 VERSION ?=
 DEPLOY_DEV_URL ?= https://dev.spinorama.org
 
-ANNOTATIONS_MANIFEST := src/spinorama/annotations_rust/Cargo.toml
+ANNOTATIONS_MANIFEST := crates/spinorama-annotations/Cargo.toml
 GENERATE_MANIFEST := crates/spinorama-generate/Cargo.toml
 WORKSPACE_MANIFEST := Cargo.toml
 
@@ -27,7 +29,7 @@ SPEAKER ?=
 export PYTHONPATH := .:./src:./src/spinorama:./src/website:./scripts
 PYTHON_LINT_PATHS ?= src scripts tests
 
-.PHONY: help setup install-js rust rust-build rust-python rust-check rust-fmt \
+.PHONY: help setup install install-dev install-js rust rust-build rust-python rust-check rust-fmt \
 	rust-clippy build build-dev build-dev-full build-dev-site rebuild serve dev run \
 	test test-rust test-python test-js test-dev test-annotations test-annotations-rust lint lint-python \
 	lint-python-strict check annotations clean generate-check generate-fmt generate-clippy \
@@ -42,7 +44,14 @@ help: ## Show available targets and configurable variables.
 	@awk 'BEGIN {FS = ":.*## "; printf "Usage: make <target> [VARIABLE=value]\n\nTargets:\n"} /^[a-zA-Z0-9_.-]+:.*## / {printf "  %-18s %s\n", $$1, $$2} END {printf "\nExamples:\n  make dev\n  make images SPEAKER=\"Topping MA4\"\n  make test-annotations\n"}' $(MAKEFILE_LIST)
 	@printf '\nImage generation: SPEAKER and VERSION filter the catalogue; omit them for all measurements.\n  GPUI_TOOLKIT_DIR=%s\n  JOBS=%s\nDeployment: make deploy-dev | deploy-nginx-dev | deploy-binaries-dev\n' "$(GPUI_TOOLKIT_DIR)" "$(JOBS)"
 
-setup: ## Install project dependencies and build native binaries.
+install: ## Install Python in .venv, Rust via user-local rustup, and locked JS dependencies.
+	./scripts/setup.sh --install-only
+
+install-dev: install ## Also install Python test and lint tools.
+	"$(PYTHON)" -m pip install -e '.[dev]'
+	"$(RUSTUP)" component add rustfmt clippy
+
+setup: ## Install dependencies, prepare website assets, and build native binaries.
 	./scripts/setup.sh
 
 install-js: ## Install JavaScript dependencies from the lockfile.
@@ -51,16 +60,16 @@ install-js: ## Install JavaScript dependencies from the lockfile.
 rust: workspace-build ## Build the release Rust workspace binaries.
 
 rust-build: ## Build the optional Python annotation wheel with Maturin.
-	$(MATURIN) build --release --manifest-path $(ANNOTATIONS_MANIFEST)
+	$(MATURIN) build --locked --release --manifest-path $(ANNOTATIONS_MANIFEST) --features python
 
 rust-python: ## Build and install the optional Python annotation extension with Maturin.
-	$(MATURIN) develop --release --manifest-path $(ANNOTATIONS_MANIFEST)
+	$(MATURIN) develop --locked --release --manifest-path $(ANNOTATIONS_MANIFEST) --features python
 
 python-reference: ## Install optional extensions for Python reference and parity tests.
-	$(PYTHON) -m pip install -r requirements.txt
+	$(PYTHON) -m pip install -e '.[dev,reference]'
 	cd src/spinorama/compute_scores_cython && $(PYTHON) setup.py build_ext --inplace
 	$(MATURIN) develop --release --manifest-path src/spinorama/compute_scores_rust/Cargo.toml
-	$(MATURIN) develop --release --manifest-path $(ANNOTATIONS_MANIFEST)
+	$(MATURIN) develop --locked --release --manifest-path $(ANNOTATIONS_MANIFEST) --features python
 
 rust-check: ## Type-check the native Rust annotation solver.
 	$(CARGO) check --manifest-path $(ANNOTATIONS_MANIFEST) --no-default-features
@@ -179,7 +188,7 @@ run: dev ## Alias for the local build-and-run workflow.
 
 test: test-rust test-python test-js ## Run Rust, Python, and frontend test suites.
 
-test-rust: workspace-test test-annotations-rust ## Run workspace and annotation-solver Rust tests.
+test-rust: workspace-test ## Run workspace and annotation-solver Rust tests.
 
 test-annotations-rust: ## Run Rust annotation solver unit tests.
 	$(CARGO) test --manifest-path $(ANNOTATIONS_MANIFEST) --no-default-features
@@ -218,3 +227,7 @@ annotations: ## Render annotated images for one speaker (requires SPEAKER=...).
 
 clean: ## Run the repository cleanup script.
 	./scripts/cleanup.sh
+
+.PHONY: check-public-history
+check-public-history: ## Inventory confidential blobs in fetched Git history (fails until cleanup).
+	$(PYTHON) scripts/check_public_history.py

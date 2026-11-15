@@ -162,7 +162,7 @@ function headFragment() {
     return head;
 }
 
-function contextFragment(context, index) {
+export function contextFragment(context, index) {
     const fragment = new DocumentFragment();
     if (index === 0) {
         const divs = headFragment().children;
@@ -179,72 +179,53 @@ function contextFragment(context, index) {
     const model = context.model;
     const div0 = document.createElement('div');
     div0.setAttribute('class', class2);
-    div0.innerHTML = brand + ' ' + model;
+    div0.textContent = brand + ' ' + model;
     fragment.append(div0);
 
     const price = context.price;
     const div1 = document.createElement('div');
     div1.setAttribute('class', class1);
-    div1.innerHTML = price;
+    div1.textContent = price;
     fragment.append(div1);
 
     const reviews = context.reviews.reviews;
     const div2 = document.createElement('div');
     div2.setAttribute('class', class2);
     const useShort = window.innerWidth < 860 || reviews.length > 1;
-    div2.innerHTML = reviews
-        .flatMap(
-            (review) => '<a href="' + review.url + '">' + (useShort ? review.originShort : review.originLong) + '</a>&nbsp;'
-        )
-        .join('<br/>');
+    reviews.forEach((review, i) => {
+        if (i) div2.append(document.createElement('br'));
+        const link = document.createElement('a');
+        link.textContent = useShort ? review.originShort : review.originLong;
+        try {
+            const url = new URL(review.url, window.location.href);
+            if (['https:', 'http:'].includes(url.protocol)) link.href = url.href;
+        } catch { /* Invalid contributor URL: retain the label. */ }
+        div2.append(link);
+    });
     fragment.append(div2);
 
     const measurements = context.allMeasurements;
-    const multi = measurements.length > 1;
-    const sep = multi ? '<br/>' : '';
-
-    const noData = '***';
-
-    const div3 = document.createElement('div');
-    div3.setAttribute('class', class1);
-    div3.innerHTML = measurements
-        .map((m) => (m.estimates.ref_3dB !== undefined ? m.estimates.ref_3dB + 'Hz' : noData))
-        .join(sep);
-    fragment.append(div3);
-
-    const div4 = document.createElement('div');
-    div4.setAttribute('class', class1);
-    div4.innerHTML = measurements
-        .map((m) => (m.estimates.ref_band !== undefined ? m.estimates.ref_band + 'dB' : noData))
-        .join(sep);
-    fragment.append(div4);
-
-    const formatScore = (v, isDefault) => {
-        if (v && !isNaN(v)) {
-            return isDefault ? '<b>' + v + '</b>' : v;
-        }
-        return noData;
-    };
-
-    const div5 = document.createElement('div');
-    div5.setAttribute('class', class1);
-    div5.innerHTML = measurements.map((m) => formatScore(m.scores.pref_score, m.isDefault)).join(sep);
-    fragment.append(div5);
-
-    const div6 = document.createElement('div');
-    div6.setAttribute('class', class1);
-    div6.innerHTML = measurements.map((m) => formatScore(m.scores.pref_score_wsub, m.isDefault)).join(sep);
-    fragment.append(div6);
-
-    const div7 = document.createElement('div');
-    div7.setAttribute('class', class1);
-    div7.innerHTML = measurements.map((m) => formatScore(m.scoresEq.pref_score, m.isDefault)).join(sep);
-    fragment.append(div7);
-
-    const div8 = document.createElement('div');
-    div8.setAttribute('class', class1);
-    div8.innerHTML = measurements.map((m) => formatScore(m.scoresEq.pref_score_wsub, m.isDefault)).join(sep);
-    fragment.append(div8);
+    const fields = [
+        m => m.estimates.ref_3dB === undefined ? '***' : `${m.estimates.ref_3dB}Hz`,
+        m => m.estimates.ref_band === undefined ? '***' : `${m.estimates.ref_band}dB`,
+        m => m.scores.pref_score,
+        m => m.scores.pref_score_wsub,
+        m => m.scoresEq.pref_score,
+        m => m.scoresEq.pref_score_wsub,
+    ];
+    fields.forEach((field, column) => {
+        const cell = document.createElement('div');
+        cell.className = class1;
+        measurements.forEach((measurement, i) => {
+            if (i) cell.append(document.createElement('br'));
+            const value = field(measurement);
+            const text = column < 2 ? value : Number.isFinite(Number(value)) ? String(value) : '***';
+            const item = document.createElement(column >= 2 && measurement.isDefault ? 'b' : 'span');
+            item.textContent = text;
+            cell.append(item);
+        });
+        fragment.append(cell);
+    });
 
     return fragment;
 }

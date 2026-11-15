@@ -56,7 +56,7 @@ def find_original_speaker_name(sanitized_name):
 
 SITEPROD = "https://www.spinorama.org"
 SITEDEV = "https://dev.spinorama.org"
-CACHE_VERSION = "v7"
+CACHE_VERSION = "v8"
 
 
 def get_files(dir: str, ext: str) -> list[str]:
@@ -92,6 +92,24 @@ WEBSITE_JS_FILES = (
     "headphone_eqs",
     "headphone_scores",
 )
+
+
+def prune_obsolete_js(dist_dir: str, cache_version: str) -> list[str]:
+    """Remove old owned bundle versions unused by any generated HTML page."""
+    used_versions = {cache_version}
+    reference = re.compile(rb"(?:/|\b)js/[\w-]+-(v[0-9]+)(?:\.min)?\.js")
+    for directory, _, files in os.walk(dist_dir):
+        for name in files:
+            if name.endswith(".html"):
+                with open(os.path.join(directory, name), "rb") as source:
+                    used_versions.update(match.decode() for match in reference.findall(source.read()))
+    removed = []
+    for path in glob(os.path.join(dist_dir, "js", "*.js")):
+        match = re.fullmatch(r"(.+)-(v[0-9]+)(?:\.min)?\.js", os.path.basename(path))
+        if match and match[1] in WEBSITE_JS_FILES and match[2] not in used_versions:
+            os.remove(path)
+            removed.append(path)
+    return sorted(removed)
 
 
 def get_versions(filename: str) -> dict[str, str]:
@@ -395,6 +413,7 @@ def generate_speaker(
                     f'make graphs SPEAKER="{speaker_name}"'
                 )
                 print("./target/release/generate-meta --metadata-dir datas/measurements")
+                raise
 
 
 def generate_speakers(mako, dataframe, meta, site, use_search, versions):
@@ -632,7 +651,6 @@ def main():
             for hp_name, hp_data in hp_meta.items():
                 if hp_data.get("skip", False):
                     continue
-                brand = hp_data.get("brand", "")
                 default_m = hp_data.get("default_measurement", "asr")
                 m_data = hp_data.get("measurements", {}).get(default_m, {})
                 origin = m_data.get("origin", "ASR")
@@ -895,6 +913,7 @@ def main():
         print("Copying robots files failed with {}".format(key_error))
         sys.exit(1)
 
+    prune_obsolete_js(cpaths.CPATH_DIST, CACHE_VERSION)
     sys.exit(0)
 
 

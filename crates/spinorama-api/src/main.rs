@@ -28,6 +28,8 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, bail};
 use serde_json::{Map, Value};
@@ -436,6 +438,7 @@ struct Request {
     query: HashMap<String, String>,
     headers: HashMap<String, String>,
     body: Vec<u8>,
+    key_id: Option<String>,
 }
 
 struct Response {
@@ -693,7 +696,6 @@ fn speaker_measurement_data(
         ));
     }
     let resource = format!("{speaker_name}/{origin}/{speaker_version}/{measurement_name}");
-    eprintln!("download key={key_id} resource={resource} format={measurement_format}");
     let Ok(text) = std::fs::read_to_string(&measurement_file) else {
         return Response::error("fetching measurements failed");
     };
@@ -767,7 +769,6 @@ fn headphone_frequency_response(
         ));
     }
     let resource = format!("{headphone_name}/{meas_key}/frequency_response");
-    eprintln!("download key={key_id} resource={resource} format=csv");
     let secret = fingerprint::secret_from_env();
     let Ok(text) = std::fs::read_to_string(&csv_path) else {
         return Response::error("fetching frequency response failed");
@@ -791,7 +792,7 @@ fn headphone_frequency_response(
     }
 }
 
-fn route(state: &State, request: &Request) -> Response {
+fn route(state: &State, request: &mut Request) -> Response {
     let segments: Vec<&str> = request.segments.iter().map(String::as_str).collect();
     // Public documentation, as with FastAPI.
     match segments.as_slice() {
@@ -896,6 +897,8 @@ fn route(state: &State, request: &Request) -> Response {
             Err(response) => return response,
         }
     };
+
+    request.key_id = Some(key_id.clone());
 
     match segments.as_slice() {
         ["v1", "brands"] => {
@@ -1148,8 +1151,8 @@ fn openapi_spec() -> String {
         for a fixed demo set of 10 speakers measured by ASR (Audio Science Review) \
         and published in 2024. Only those speakers and their ASR measurements are \
         available there, with pristine (unfingerprinted) data.\n\n\
-        Curve responses carry an imperceptible per-key variation (at most 0.05 dB) \
-        used only to identify the source of leaked data. ErinsAudioCorner measurements \
+        One-dimensional scatter curves and headphone CSV responses carry a per-key variation (at most 0.05 dB) \
+        used only to identify the source of leaked data. Contour, surface, and other non-scatter formats are not fingerprinted. ErinsAudioCorner measurements \
         are not available through this API.\n\n## Measurement data license\n\n\
         Unless otherwise stated, measurement data is licensed under CC BY-NC-SA 4.0. \
         Commercial use is not permitted under this license.";
@@ -1218,9 +1221,26 @@ fn openapi_spec() -> String {
     serde_json::to_string(&spec).unwrap_or_default()
 }
 
+// Bounds cover a validation document and normal proxy headers on the small VPS.
+const MAX_HEADERS: usize = 32 * 1024;
+const MAX_BODY: usize = 1024 * 1024;
+const MAX_CONNECTIONS: usize = 32;
+const REQUEST_DEADLINE: Duration = Duration::from_secs(5);
+
+fn header_line(reader: &mut BufReader<impl Read>, remaining: &mut usize) -> Result<String> {
+    let mut line = String::new();
+    reader.take((*remaining + 1) as u64).read_line(&mut line)?;
+    if line.len() > *remaining {
+        bail!("request headers too large");
+    }
+    *remaining -= line.len();
+    Ok(line)
+}
+
 fn read_request(reader: &mut BufReader<impl Read>) -> Result<Option<Request>> {
-    let mut request_line = String::new();
-    if reader.read_line(&mut request_line)? == 0 {
+    let mut remaining = MAX_HEADERS;
+    let request_line = header_line(reader, &mut remaining)?;
+    if request_line.is_empty() {
         return Ok(None);
     }
     let mut parts = request_line.split_whitespace();
@@ -1230,21 +1250,33 @@ fn read_request(reader: &mut BufReader<impl Read>) -> Result<Option<Request>> {
         return Ok(None);
     }
     let mut headers = HashMap::new();
-    let mut line = String::new();
     loop {
-        line.clear();
-        if reader.read_line(&mut line)? == 0 || line == "\r\n" || line == "\n" {
+        let line = header_line(reader, &mut remaining)?;
+        if line == "\r\n" || line == "\n" {
             break;
         }
-        if let Some((name, value)) = line.split_once(':') {
-            headers.insert(name.trim().to_lowercase(), value.trim().to_owned());
+        let Some((name, value)) = line.split_once(':') else {
+            bail!("incomplete or malformed headers");
+        };
+        if headers
+            .insert(name.trim().to_lowercase(), value.trim().to_owned())
+            .is_some()
+        {
+            bail!("duplicate header");
         }
+    }
+    if headers.contains_key("transfer-encoding") {
+        bail!("transfer encoding is not supported");
     }
     let content_length: usize = headers
         .get("content-length")
-        .and_then(|v| v.parse().ok())
+        .map(|v| v.parse::<usize>())
+        .transpose()?
         .unwrap_or(0);
-    let mut body = vec![0u8; content_length.min(16 * 1024 * 1024)];
+    if content_length > MAX_BODY {
+        bail!("request body too large");
+    }
+    let mut body = vec![0u8; content_length];
     if !body.is_empty() {
         reader.read_exact(&mut body)?;
     }
@@ -1271,6 +1303,7 @@ fn read_request(reader: &mut BufReader<impl Read>) -> Result<Option<Request>> {
         query,
         headers,
         body,
+        key_id: None,
     }))
 }
 
@@ -1293,19 +1326,73 @@ fn write_response(writer: &mut impl Write, response: &Response) -> Result<()> {
 }
 
 fn handle_stream<S: Read + Write + TryCloneStream>(state: &State, stream: S) {
+    let started = Instant::now();
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    let local_id = format!("{:08x}{:024x}", std::process::id(), timestamp.as_nanos());
     let mut writer = match stream.try_clone_stream() {
         Ok(clone) => std::io::BufWriter::new(clone),
         Err(_) => return,
     };
-    let mut reader = BufReader::new(stream);
+    let _ = stream.set_write_timeout(Some(REQUEST_DEADLINE));
+    let mut reader = BufReader::new(DeadlineReader {
+        stream,
+        deadline: Instant::now() + REQUEST_DEADLINE,
+    });
     match read_request(&mut reader) {
-        Ok(Some(request)) => {
-            let response = route(state, &request);
-            let _ = write_response(&mut writer, &response);
+        Ok(Some(mut request)) => {
+            let request_id = request
+                .headers
+                .get("x-request-id")
+                .filter(|id| id.len() == 32 && id.bytes().all(|b| b.is_ascii_hexdigit()))
+                .cloned()
+                .unwrap_or(local_id);
+            let mut response = route(state, &mut request);
+            response
+                .extra_headers
+                .push(("X-Request-ID".to_owned(), request_id.clone()));
+            let written = write_response(&mut writer, &response).is_ok();
+            let cache = response
+                .extra_headers
+                .iter()
+                .find(|(name, _)| name == "X-Compare-Cache")
+                .map(|(_, value)| value.as_str());
+            let render_outcome = if cache.is_some() {
+                cache
+            } else if response.status == 503 {
+                match response.body.as_slice() {
+                    b"renderer busy\n" => Some("busy"),
+                    b"render budget exhausted\n" => Some("budget_exhausted"),
+                    _ => None,
+                }
+            } else {
+                None
+            };
+            eprintln!(
+                "{}",
+                serde_json::json!({
+                    "event": "http.request.completed", "timestamp_unix_ms": timestamp.as_millis(),
+                    "request_id": request_id, "method": request.method,
+                    "resource": request.segments.join("/").chars().take(512).collect::<String>(),
+                    "status": response.status, "duration_ms": started.elapsed().as_millis(),
+                    "key_id": request.key_id, "render_outcome": render_outcome,
+                    "authentication_failed": response.status == 401, "response_written": written,
+                })
+            );
         }
         Ok(None) => {}
         Err(error) => {
-            eprintln!("spinorama-api: request error: {error:#}");
+            let _ = error;
+            eprintln!(
+                "{}",
+                serde_json::json!({
+                    "event": "http.request.rejected", "status": 400,
+                    "timestamp_unix_ms": timestamp.as_millis(), "request_id": local_id,
+                    "duration_ms": started.elapsed().as_millis(), "resource": null,
+                    "key_id": null, "render_outcome": null,
+                })
+            );
             let _ = write_response(
                 &mut writer,
                 &Response::json(400, &serde_json::json!({ "detail": "Bad Request" })),
@@ -1314,14 +1401,68 @@ fn handle_stream<S: Read + Write + TryCloneStream>(state: &State, stream: S) {
     }
 }
 
+struct DeadlineReader<S> {
+    stream: S,
+    deadline: Instant,
+}
+
+impl<S: Read + TryCloneStream> Read for DeadlineReader<S> {
+    fn read(&mut self, bytes: &mut [u8]) -> std::io::Result<usize> {
+        let remaining = self
+            .deadline
+            .checked_duration_since(Instant::now())
+            .filter(|duration| !duration.is_zero())
+            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::TimedOut, "request deadline"))?;
+        self.stream.set_read_timeout(Some(remaining))?;
+        self.stream.read(bytes)
+    }
+}
+
+struct Connection(Arc<AtomicUsize>);
+
+impl Drop for Connection {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::Relaxed);
+    }
+}
+
+fn spawn_connection<S: Read + Write + TryCloneStream + Send + 'static>(
+    state: &Arc<State>,
+    active: &Arc<AtomicUsize>,
+    stream: S,
+) {
+    if active
+        .try_update(Ordering::Relaxed, Ordering::Relaxed, |count| {
+            (count < MAX_CONNECTIONS).then_some(count + 1)
+        })
+        .is_err()
+    {
+        return; // Closing here avoids spawning a worker for an over-budget connection.
+    }
+    let permit = Connection(Arc::clone(active));
+    let state = Arc::clone(state);
+    let _ = std::thread::Builder::new().spawn(move || {
+        let _permit = permit;
+        handle_stream(&state, stream);
+    });
+}
+
 /// Helper so `handle_stream` can split a stream into reader/writer.
 trait TryCloneStream: Sized {
     fn try_clone_stream(&self) -> std::io::Result<Self>;
+    fn set_read_timeout(&self, timeout: Option<Duration>) -> std::io::Result<()>;
+    fn set_write_timeout(&self, timeout: Option<Duration>) -> std::io::Result<()>;
 }
 
 impl TryCloneStream for std::net::TcpStream {
     fn try_clone_stream(&self) -> std::io::Result<Self> {
         self.try_clone()
+    }
+    fn set_read_timeout(&self, timeout: Option<Duration>) -> std::io::Result<()> {
+        Self::set_read_timeout(self, timeout)
+    }
+    fn set_write_timeout(&self, timeout: Option<Duration>) -> std::io::Result<()> {
+        Self::set_write_timeout(self, timeout)
     }
 }
 
@@ -1330,9 +1471,16 @@ impl TryCloneStream for std::os::unix::net::UnixStream {
     fn try_clone_stream(&self) -> std::io::Result<Self> {
         self.try_clone()
     }
+    fn set_read_timeout(&self, timeout: Option<Duration>) -> std::io::Result<()> {
+        Self::set_read_timeout(self, timeout)
+    }
+    fn set_write_timeout(&self, timeout: Option<Duration>) -> std::io::Result<()> {
+        Self::set_write_timeout(self, timeout)
+    }
 }
 
 fn serve(state: Arc<State>) -> Result<()> {
+    let active = Arc::new(AtomicUsize::new(0));
     let bind =
         std::env::var("SPINORAMA_API_BIND").unwrap_or_else(|_| "tcp:127.0.0.1:8000".to_owned());
     if let Some(socket_path) = bind.strip_prefix("unix:") {
@@ -1345,13 +1493,12 @@ fn serve(state: Arc<State>) -> Result<()> {
             }
             let listener = std::os::unix::net::UnixListener::bind(path)
                 .with_context(|| format!("binding unix:{}", path.display()))?;
-            let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o666));
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o660))?;
             eprintln!("spinorama-api: listening on unix:{}", path.display());
             for stream in listener.incoming() {
                 match stream {
                     Ok(stream) => {
-                        let state = Arc::clone(&state);
-                        std::thread::spawn(move || handle_stream(&state, stream));
+                        spawn_connection(&state, &active, stream);
                     }
                     Err(error) => eprintln!("spinorama-api: accept failed: {error}"),
                 }
@@ -1363,12 +1510,14 @@ fn serve(state: Arc<State>) -> Result<()> {
     }
     let address = bind.strip_prefix("tcp:").unwrap_or(&bind);
     let listener = TcpListener::bind(address).with_context(|| format!("binding tcp:{address}"))?;
+    if !listener.local_addr()?.ip().is_loopback() {
+        bail!("TCP backend must use a loopback address");
+    }
     eprintln!("spinorama-api: listening on tcp:{address}");
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
-                let state = Arc::clone(&state);
-                std::thread::spawn(move || handle_stream(&state, stream));
+                spawn_connection(&state, &active, stream);
             }
             Err(error) => eprintln!("spinorama-api: accept failed: {error}"),
         }

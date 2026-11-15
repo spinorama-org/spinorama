@@ -1,0 +1,17 @@
+{
+  "approved_source_blobs": {
+    "crates/spinorama-generate/tests/fixtures/genelec-8351a-princeton-cea2034.bundle.json": "6d16cfad6420445566ff3ecb62cc97b71f9538ae",
+    "crates/spinorama-generate/tests/fixtures/kef-r3-asr-cea2034.bundle.json": "687b6db5cc88a4af5c3199ff6c20056cdf8d43af",
+    "crates/spinorama-generate/tests/fixtures/kef-r3-asr-on-axis.bundle.json": "af0e566c9bcf865fb5c2135df3950475a1922602",
+    "datas/inroom/m001/L.txt": "d578a07ed3dffb75dc9085a2b8f714db4fdd0d37",
+    "datas/inroom/m001/R.txt": "e6d854b69ba2b00575298c1b78a2f68b92a3430f",
+    "datas/inroom/m002/L.large.txt": "79dc400b6553d1e0d2700544a9d3e375bac261f3",
+    "datas/inroom/m002/L.txt": "c4488f3de34da18091fb916474bbffeeefe99d71",
+    "datas/inroom/m002/R.large.txt": "d503c962ea980413196678b357610afc3deb00db",
+    "datas/inroom/m002/R.txt": "6b492276b193fb83b65b8a6ea034797ae676ea82",
+    "manual/data/template Spinorama.tar": "070d051e8230455bf81a71cd02832a66259a2d9b"
+  },
+  "approved_website_examples": {
+    "docs/data/template Spinorama.tar": "manual/data/template Spinorama.tar"
+  }
+}

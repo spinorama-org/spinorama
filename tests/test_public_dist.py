@@ -1,5 +1,9 @@
 """Public website trees must not contain private measurement data."""
 
+import bz2
+import gzip
+import json
+import zipfile
 import importlib.util
 import pathlib
 import tempfile
@@ -36,7 +40,14 @@ class PublicDistTests(unittest.TestCase):
             for relative in private + public:
                 path = root / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text("{}\n", encoding="utf-8")
+                if relative.endswith(".bz2"):
+                    path.write_bytes(bz2.compress(b"{}"))
+                elif relative == "docs/search.json":
+                    path.write_text("[]")
+                elif relative.endswith(".txt") and relative in public:
+                    path.write_text("Measurement license")
+                else:
+                    path.write_text("{}\n", encoding="utf-8")
 
             found = {
                 path.relative_to(root).as_posix()
@@ -72,6 +83,75 @@ class PublicDistTests(unittest.TestCase):
             link.symlink_to(private)
 
             self.assertEqual(check_public_dist.find_private_data(root), [link])
+
+    def test_rejects_archives_compressed_data_and_unrecognized_catalogues(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            names = [
+                "docs/data/template.tar",
+                "json/private.bundle.json",
+                "speakers/Test/response.txt",
+                "speakers/Test/data.csv.gz",
+                "json/metadata.json.br",
+                "json/metadata.json.bz2",
+            ]
+            for name in names:
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"100 80\n200 82\n")
+            self.assertEqual(len(check_public_dist.find_private_data(root)), len(names))
+
+    def test_checks_payload_schema_inside_every_supported_container(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            folder = root / "json"
+            folder.mkdir()
+            valid = {
+                "Example": {
+                    "brand": "Example",
+                    "model": "Synthetic",
+                    "measurements": {"test": {"origin": "Lab"}},
+                }
+            }
+            for payload, count in [
+                (valid, 0),
+                (
+                    {
+                        "Example": {
+                            **valid["Example"],
+                            "measurements": {"test": {"x": [1, 2], "y": [80, 81]}},
+                        }
+                    },
+                    4,
+                ),
+            ]:
+                raw = json.dumps(payload).encode()
+                (folder / "metadata.json").write_bytes(raw)
+                (folder / "metadata.json.bz2").write_bytes(bz2.compress(raw))
+                (folder / "metadata.json.gz").write_bytes(gzip.compress(raw))
+                with zipfile.ZipFile(folder / "metadata.json.zip", "w") as archive:
+                    archive.writestr("dist/json/metadata.json", raw)
+                self.assertEqual(len(check_public_dist.find_private_data(root)), count)
+            with zipfile.ZipFile(folder / "metadata.json.zip", "w") as archive:
+                archive.writestr("metadata.json", json.dumps(valid))
+                archive.writestr("hidden.csv", "100,80")
+            self.assertIn(folder / "metadata.json.zip", check_public_dist.find_private_data(root))
+
+    def test_accepts_only_the_exact_approved_documentation_archive(self):
+        source = _SCRIPT.parents[1] / "manual/data/template Spinorama.tar"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            archive = root / "docs/data/template Spinorama.tar"
+            archive.parent.mkdir(parents=True)
+            approved = source.read_bytes()
+            archive.write_bytes(approved)
+            self.assertEqual(check_public_dist.find_private_data(root), [])
+            archive.write_bytes(approved + b"changed")
+            self.assertEqual(check_public_dist.find_private_data(root), [archive])
+            archive.write_bytes(approved)
+            unapproved = archive.with_name("unapproved.tar")
+            unapproved.write_bytes(approved)
+            self.assertEqual(check_public_dist.find_private_data(root), [unapproved])
 
     def test_missing_root_is_an_error(self) -> None:
         self.assertEqual(check_public_dist.main(["/definitely/missing"]), 2)

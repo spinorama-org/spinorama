@@ -1,10 +1,11 @@
 #!/bin/sh
+set -eu
 
 # warning this section is read by a python script (generate_html) to grab the versions
 
-HANDLEBARS=4.7.9
+HANDLEBARS=4.7.10
 BULMA=1.0.4
-FUSE=7.4.2
+FUSE=7.5.0
 # end section
 
 ASSETS=./dist
@@ -14,17 +15,13 @@ ASSETS_JSON=${ASSETS}/json
 
 mkdir -p ${ASSETS} ${ASSETS_JS} ${ASSETS_CSS} ${ASSETS_JSON}
 
-# handlebars
-if ! test -f "${ASSETS_JS}/handlebars-${HANDLEBARS}.min.js"; then
-    wget -O${ASSETS_JS}/handlebars-${HANDLEBARS}.min.js https://cdn.jsdelivr.net/npm/handlebars@${HANDLEBARS}/dist/handlebars.min.js
-fi
+# Dependencies are installed by make install / npm ci.
+cp node_modules/handlebars/dist/handlebars.min.js "${ASSETS_JS}/handlebars-${HANDLEBARS}.min.js"
 
 # BULMA: compile from SCSS to include both light and dark themes
-npm install bulma
-npx sass --load-path=node_modules src/website/bulma4spin.scss dist/css/bulma-${BULMA}.min.css --style=compressed --no-source-map
+npx --no-install sass --load-path=node_modules src/website/bulma4spin.scss dist/css/bulma-${BULMA}.min.css --style=compressed --no-source-map
 
 # FUSE.JS
-npm install fuse.js
 cp node_modules/fuse.js/dist/fuse.min.mjs ${ASSETS_JS}/fuse-${FUSE}.min.mjs
 
 

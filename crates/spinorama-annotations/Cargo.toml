@@ -1,0 +1,22 @@
+[package]
+name = "annotations_rust"
+version = "0.1.3"
+edition = "2021"
+publish = false
+description = "Shared graph annotation placement solver with optional Python bindings"
+
+[lib]
+name = "annotations_rust"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+python = ["dep:pyo3"]
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+pyo3 = { workspace = true, features = ["extension-module"], optional = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde-wasm-bindgen.workspace = true
+wasm-bindgen.workspace = true

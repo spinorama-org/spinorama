@@ -5,7 +5,6 @@
     "canvas": "^3.2.3",
     "fuse.js": "^7.5.0",
     "handlebars": "4.7.10",
-    "npm": "12.2.2",
     "npm-check-updates": "23.1.1",
     "rollup": "^4.68.3",
     "tar": "^7.5.23"

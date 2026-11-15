@@ -46,5 +46,12 @@ python3 ./scripts/check_public_dist.py ./dist || exit 1
 # copy
 echo "Sync starts:"
 for target in "$TARGET"; do
-    rsync -avrz --delete ./dist/* "$target"
+    rsync -avrz --delete ./dist/ "$target/" || exit 1
+    changes=$(rsync -rcln --delete --itemize-changes ./dist/ "$target/") || exit 1
+    if [ -n "$changes" ]; then
+        echo "KO: destination differs from the checked public tree" >&2
+        printf '%s\n' "$changes" >&2
+        exit 1
+    fi
+    echo "OK: destination contents verified"
 done

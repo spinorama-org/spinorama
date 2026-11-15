@@ -140,7 +140,7 @@ fn read_zip_entries(dir: &Path, speaker: &str) -> Result<Vec<(String, String)>> 
     let mut out = Vec::new();
     for index in 0..archive.len() {
         let mut entry = archive.by_index(index)?;
-        let name = entry.name().to_owned();
+        let name = entry.name()?.into_owned();
         if !name.ends_with(".txt") {
             continue;
         }

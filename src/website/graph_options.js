@@ -124,16 +124,99 @@ export function initGraphOptions() {
 
     let observer;
     const visible = new Set();
-    const updateImage = ({ img, staticSrc, info }) => {
-        // Callouts exist on the two spin views; other images need no new render.
+    let rendering = false;
+    for (const target of targets) {
+        target.wanted = target.staticSrc;
+        target.applied = target.staticSrc;
+        target.status = document.createElement('span');
+        target.status.setAttribute('role', 'status');
+        target.img.after(target.status);
+    }
+    const renderNext = async () => {
+        if (rendering) return;
+        rendering = true;
+        try {
+            let target;
+            while ((target = targets.find(t => t.wanted !== t.applied && !t.failed &&
+                (!observer || visible.has(t.img))))) {
+                const { img, wanted: source, staticSrc } = target;
+                target.loading = source;
+                let picture = source;
+                try {
+                    if (source !== staticSrc) {
+                        for (let attempt = 0; ; attempt++) {
+                            const response = await fetch(source);
+                            if (source !== target.wanted) break;
+                            if (response.status === 503 && attempt < 4) {
+                                const retry = response.headers.get('Retry-After');
+                                const seconds = retry && /^\d+$/.test(retry) ? Number(retry) :
+                                    retry ? (Date.parse(retry) - Date.now()) / 1000 : 2 ** attempt;
+                                await new Promise(resolve => setTimeout(resolve,
+                                    Math.max(0, Number.isFinite(seconds) ? seconds : 1) * 1000));
+                                if (source !== target.wanted) break;
+                                continue;
+                            }
+                            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                            picture = URL.createObjectURL(await response.blob());
+                            break;
+                        }
+                    }
+                    if (source !== target.wanted) {
+                        if (picture.startsWith('blob:')) URL.revokeObjectURL(picture);
+                        continue;
+                    }
+                    const probe = new Image();
+                    await new Promise((resolve, reject) => {
+                        probe.onload = resolve;
+                        probe.onerror = () => reject(new Error('Invalid picture'));
+                        probe.src = picture;
+                    });
+                    if (source !== target.wanted) {
+                        if (picture.startsWith('blob:')) URL.revokeObjectURL(picture);
+                        continue;
+                    }
+                    img.src = picture;
+                    if (target.objectUrl) URL.revokeObjectURL(target.objectUrl);
+                    target.objectUrl = picture.startsWith('blob:') ? picture : null;
+                    target.applied = source;
+                    img.dataset.renderUrl = source;
+                    if (source === target.wanted) {
+                        img.style.visibility = '';
+                        img.removeAttribute('aria-busy');
+                        target.status.textContent = '';
+                    }
+                } catch {
+                    if (picture.startsWith('blob:') && picture !== target.objectUrl) URL.revokeObjectURL(picture);
+                    if (source === target.wanted) {
+                        target.failed = true;
+                        img.removeAttribute('aria-busy');
+                        target.status.textContent = 'Graph could not be loaded. Change an option to retry.';
+                    }
+                } finally {
+                    target.loading = null;
+                    if (target.wanted === target.applied) {
+                        img.style.visibility = '';
+                        img.removeAttribute('aria-busy');
+                        target.status.textContent = '';
+                    }
+                }
+            }
+        } finally {
+            rendering = false;
+        }
+    };
+    const updateImage = (target) => {
+        const { img, staticSrc, info } = target;
         const effective = info.measurement.startsWith('CEA2034') ? options : { ...options, annotations: true };
         const source = isDefaultOptions(effective) ? staticSrc : buildGraphUrl(info, effective, 1400);
-        if (img.getAttribute('src') === source) return;
-        img.onerror = source === staticSrc ? null : () => {
-            img.onerror = null;
-            img.src = staticSrc;
-        };
-        img.src = source;
+        target.wanted = source;
+        target.failed = false;
+        const pending = source !== target.applied || Boolean(target.loading);
+        img.style.visibility = pending ? 'hidden' : '';
+        img.setAttribute('aria-busy', String(pending));
+        target.status.textContent = pending ? 'Loading graph…' : '';
+        // Start after this change has updated every image's desired state.
+        queueMicrotask(renderNext);
     };
     const apply = () => {
         for (const key of ['trend', 'zones', 'annotations', 'grid', 'legend']) {
@@ -147,7 +230,7 @@ export function initGraphOptions() {
             // storage unavailable: options last for this page only
         }
         for (const target of targets) {
-            if (!observer || visible.has(target.img)) updateImage(target);
+            updateImage(target);
         }
     };
 

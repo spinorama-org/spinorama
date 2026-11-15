@@ -1,13 +1,17 @@
 upstream app_server {
-    server unix:/home/spin/run/gunicorn.sock fail_timeout=0;
+    server unix:/home/spin/run/api-proxy/api.sock fail_timeout=0;
 }
 
 server {
     include /etc/nginx/snippets/deny-repository-metadata.conf;
     listen 443 ssl;
     server_name api.spinorama.org;
+    access_log /var/log/nginx/spinorama-api.access.log spinorama_bot;
+    error_log /var/log/nginx/spinorama-api.error.log;
     keepalive_timeout 5;
-    client_max_body_size 4G;
+    client_max_body_size 1m;
+    client_header_timeout 5s;
+    client_body_timeout 5s;
 
     # No static root is configured: every request is proxied to the
     # spinorama-api binary, which alone reads the private data tree
@@ -16,9 +20,11 @@ server {
         limit_req zone=spin_anonymous_api burst=10 nodelay;
         limit_req_status 429;
         proxy_set_header Host $host;
+        proxy_set_header X-Request-ID $request_id;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header Authorization $http_authorization;
+        proxy_request_buffering on;
         proxy_cache off;
         proxy_redirect off;
         proxy_pass http://app_server;

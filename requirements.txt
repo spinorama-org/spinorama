@@ -1,56 +1,22 @@
-# Runtime and analysis
+# Python tools still used by website generation, analysis, and ingestion.
+brotli
+beautifulsoup4>=4.12.3
+flammkuchen
 frozendict
 mako
 more-itertools
-nptyping
 numpy>1.26.4
 pandas>=2.1.0
-plotly>=6.3.0
 Pillow>=10.0
+plotly>=6.3.0
+requests>=2.32.0
 scipy>=1.14.1
-flammkuchen
-kaleido>=1.0.0
-brotli
+# generate_common imports PyTables directly for HDF5 caches.
+tables
 
-# Metadata editor
+# Python GPUI metadata editor.
 gpui-toolkit~=0.11.1
 pydantic>=2.8.2,<3
 tomlkit>=0.13,<1
 
-# Data ingestion
-beautifulsoup4>=4.12.3
-lxml>=5.2.2
-opencv-python
-requests>=2.32.0
-requests-cache>=1.2.0
-tenacity>=8.5.0
-typer>=0.12.3
-
-# Development and tests
-flake8
-importmagic
-ipython
-ipywidgets
-jupyterlab
-pre-commit
-pylinkvalidator
-pyright
-pytest>=8.3.4
-pytest-cov
-python-lsp-server
-ruff
-ruff-lsp
-selenium>=4.28.1
-yapf
-
-# Documentation
-anywidget>=0.9.13
-jupyter
-notebook>=7.0
-wand
-
-# Build tools for optional Python reference extensions
-cython
-maturin
-setuptools
-wheel
+# Optional dev, browser, and reference tools: see pyproject.toml extras.

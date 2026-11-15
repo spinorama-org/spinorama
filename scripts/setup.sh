@@ -23,75 +23,55 @@ cd "${ROOT_DIR}"
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-## package check
-## ----------------------------------------------------------------------
+# Install only into the checkout and the current user's Rust directories.
+INSTALL_ONLY=false
+case "${1:-}" in
+    --install-only) INSTALL_ONLY=true ;;
+    "") ;;
+    *) echo "Usage: $0 [--install-only]" >&2; exit 2 ;;
+esac
 
-OS=$(uname)
-PYVERSION=3.12
-PYTHON="python${PYVERSION}"
-
-if test "$OS" = "Linux"; then
-  # ------------ PYTHON
-  if [ -x /usr/bin/apt ]; then
-    sudo /usr/bin/apt install -y "python${PYVERSION}" "python${PYVERSION}-venv" imagemagick keychain npm wget
-  fi
-  # ------------ LOCALE
-  # add locale if they don't exist possibly C.utf8 would work
-  if command -v locale-gen >/dev/null 2>&1; then
-    sudo locale-gen en_US.UTF-8
-  elif command -v localedef >/dev/null 2>&1; then
-    sudo localedef -f UTF-8 -i en_US en_US.UTF-8
-  fi
-elif test "$OS" = "Darwin"; then
-    brew install npm hdf5 c-blosc2 lzo bzip2 python@${PYVERSION} freetype imagemagick gawk gsed redis
-    HDF5_DIR="$(brew --prefix hdf5)"
-    export HDF5_DIR
-    # Homebrew's default python3 may point to a different Python release.
-    PYTHON="$(brew --prefix "python@${PYVERSION}")/bin/python${PYVERSION}"
-fi
-
-export PYTHONPATH="${ROOT_DIR}:${ROOT_DIR}/src:${ROOT_DIR}/src/website:${ROOT_DIR}/scripts"
-
-# python section
-if ! command -v "${PYTHON}" >/dev/null 2>&1; then
-    echo "ERROR: Python ${PYVERSION} is required. Install python${PYVERSION} and rerun scripts/setup.sh." >&2
-    exit 1
-fi
-if ! "${PYTHON}" -c 'import sys; sys.exit("%d.%d" % sys.version_info[:2] != sys.argv[1])' "${PYVERSION}"; then
-    echo "ERROR: ${PYTHON} must run Python ${PYVERSION}." >&2
-    exit 1
-fi
-
-# Reusing a venv from another release can leave incompatible packages and
-# native extensions behind. Keep it intact and explain how to start cleanly.
-if [ -e .venv ] || [ -L .venv ]; then
-    if ! .venv/bin/python -c 'import sys; sys.exit("%d.%d" % sys.version_info[:2] != sys.argv[1])' "${PYVERSION}"; then
-        echo "ERROR: .venv is broken or does not use Python ${PYVERSION}." >&2
-        echo "Move .venv aside (e.g. mv .venv .venv-backup), then rerun scripts/setup.sh." >&2
+for tool in npm git; do
+    if ! command -v "$tool" >/dev/null 2>&1; then
+        echo "ERROR: Install $tool before running setup." >&2
         exit 1
     fi
+done
+
+export PYTHONPATH="${ROOT_DIR}:${ROOT_DIR}/src:${ROOT_DIR}/src/website:${ROOT_DIR}/scripts"
+PYTHON="${SPINORAMA_PYTHON:-python3.12}"
+if [ -e .venv ] || [ -L .venv ]; then
+    PYTHON="${ROOT_DIR}/.venv/bin/python"
 fi
-"${PYTHON}" -m venv .venv
-# shellcheck source=/dev/null
-source ./.venv/bin/activate
+if ! "$PYTHON" -c 'import sys; sys.exit(sys.version_info[:2] != (3, 12))'; then
+    echo "ERROR: Python 3.12 is required. Set SPINORAMA_PYTHON to its executable." >&2
+    echo "If .venv is incompatible or broken, move it aside before rerunning setup." >&2
+    exit 1
+fi
+if [ ! -d .venv ]; then
+    "$PYTHON" -m venv .venv
+fi
 PYTHON="${ROOT_DIR}/.venv/bin/python"
-echo "Using $("${PYTHON}" --version) at ${PYTHON}"
+"$PYTHON" -m pip install -r "${ROOT_DIR}/requirements.txt"
 
-"${PYTHON}" -m pip install -U pip
-"${PYTHON}" -m pip install -U -r "${ROOT_DIR}/requirements.txt"
+export CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}"
+export RUSTUP_HOME="${RUSTUP_HOME:-$HOME/.rustup}"
+export PATH="$CARGO_HOME/bin:$PATH"
+if [ ! -x "$CARGO_HOME/bin/rustup" ]; then
+    command -v curl >/dev/null 2>&1 || { echo "ERROR: curl is needed to install rustup." >&2; exit 1; }
+    RUSTUP_INSTALLER="$(mktemp)"
+    trap 'rm -f "$RUSTUP_INSTALLER"' EXIT
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o "$RUSTUP_INSTALLER"
+    sh "$RUSTUP_INSTALLER" -y --profile minimal --default-toolchain stable --no-modify-path
+elif ! "$CARGO_HOME/bin/rustup" show active-toolchain >/dev/null 2>&1; then
+    "$CARGO_HOME/bin/rustup" toolchain install stable --profile minimal
+    "$CARGO_HOME/bin/rustup" default stable
+fi
 
-# node section
-npm install .
-
-# lint
-"${PYTHON}" -m flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --exclude .venv
-
-# install 3rd parties
-./scripts/update_3rdparties.sh
-
-# create some directories
+npm ci
 mkdir -p build dist
-
-# Build the native generators and API. Python reference extensions are optional
-# and can be installed separately with make python-reference.
-cargo build --locked --release --workspace
+if [ "$INSTALL_ONLY" = false ]; then
+    ./scripts/update_3rdparties.sh
+    "$CARGO_HOME/bin/cargo" build --locked --release --workspace
+fi
+printf 'Dependencies installed. Run source "%s/env.sh" to activate them.\n' "$ROOT_DIR"

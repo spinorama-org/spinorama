@@ -1,0 +1,24 @@
+name: Public data policy
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  history:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          submodules: false
+          persist-credentials: false
+      # This remains red until confidential blobs are removed from history.
+      # Unfetched PR refs, forks, and host caches need a separate audit.
+      - name: Reject confidential blobs in fetched history
+        run: python3 scripts/check_public_history.py

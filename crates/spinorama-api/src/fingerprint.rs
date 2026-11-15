@@ -120,29 +120,6 @@ fn read_f16(bytes: &[u8]) -> f64 {
     }
 }
 
-fn write_f16(value: f64) -> [u8; 2] {
-    // Round-trip of values produced by read_f16 plus a small offset;
-    // a plain conversion via f32 is adequate for fingerprint deltas.
-    let bits = f32::to_bits(value as f32);
-    let sign = ((bits >> 16) & 0x8000) as u16;
-    let exp32 = ((bits >> 23) & 0xff) as i32;
-    let frac32 = bits & 0x7f_ffff;
-    let out: u16 = if exp32 == 255 {
-        sign | 0x7c00 | if frac32 != 0 { 0x0200 } else { 0 }
-    } else if exp32 - 112 >= 31 {
-        sign | 0x7c00
-    } else if exp32 - 112 <= 0 {
-        if exp32 - 101 < 0 {
-            sign
-        } else {
-            sign | ((frac32 | 0x80_0000) >> (101 - exp32 + 13)) as u16
-        }
-    } else {
-        sign | (((exp32 - 112) as u16) << 10) | (frac32 >> 13) as u16
-    };
-    out.to_le_bytes()
-}
-
 /// Decodes a Plotly numeric array (plain list or `{dtype, bdata}`).
 #[must_use]
 pub fn decode_array(value: &Value) -> Option<Vec<f64>> {
@@ -192,30 +169,14 @@ fn encode_like(template: &Value, values: &[f64]) -> Value {
     let Some(obj) = template.as_object() else {
         return Value::from(values.to_vec());
     };
-    let Some(dtype) = obj.get("dtype").and_then(Value::as_str) else {
-        return Value::from(values.to_vec());
-    };
-    let Some((_, kind)) = dtype_format(dtype) else {
-        return Value::from(values.to_vec());
-    };
-    let mut raw = Vec::new();
-    for value in values {
-        match kind {
-            'd' => raw.extend_from_slice(&value.to_le_bytes()),
-            'f' => raw.extend_from_slice(&(*value as f32).to_le_bytes()),
-            'e' => raw.extend_from_slice(&write_f16(*value)),
-            'b' => raw.push((*value as i8) as u8),
-            'h' => raw.extend_from_slice(&(*value as i16).to_le_bytes()),
-            'i' => raw.extend_from_slice(&(*value as i32).to_le_bytes()),
-            'q' => raw.extend_from_slice(&(*value as i64).to_le_bytes()),
-            'B' => raw.push(*value as u8),
-            'H' => raw.extend_from_slice(&(*value as u16).to_le_bytes()),
-            'I' => raw.extend_from_slice(&(*value as u32).to_le_bytes()),
-            'Q' => raw.extend_from_slice(&(*value as u64).to_le_bytes()),
-            _ => {}
-        }
-    }
+    // Promote all binary inputs: integer and half-precision quantization can
+    // exceed the fingerprint amplitude. Preserve shape and other metadata.
+    let raw: Vec<u8> = values
+        .iter()
+        .flat_map(|value| value.to_le_bytes())
+        .collect();
     let mut encoded = obj.clone();
+    encoded.insert("dtype".to_owned(), Value::from("f8"));
     encoded.insert(
         "bdata".to_owned(),
         Value::from(base64::engine::general_purpose::STANDARD.encode(raw)),
@@ -369,4 +330,100 @@ pub fn apply_to_csv_text(
         out.push_str(ending);
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{apply_to_figure, decode_array};
+    use base64::Engine;
+    use serde_json::json;
+
+    #[test]
+    fn every_numeric_encoding_preserves_bounded_fractional_fingerprints() {
+        let encodings: Vec<(&str, Vec<u8>)> = vec![
+            (
+                "f8",
+                [80.0_f64, 85.0]
+                    .into_iter()
+                    .flat_map(f64::to_le_bytes)
+                    .collect(),
+            ),
+            (
+                "f4",
+                [80.0_f32, 85.0]
+                    .into_iter()
+                    .flat_map(f32::to_le_bytes)
+                    .collect(),
+            ),
+            (
+                "f2",
+                [0x5500_u16, 0x5550]
+                    .into_iter()
+                    .flat_map(u16::to_le_bytes)
+                    .collect(),
+            ),
+            ("i1", vec![80, 85]),
+            ("u1", vec![80, 85]),
+            (
+                "i2",
+                [80_i16, 85]
+                    .into_iter()
+                    .flat_map(i16::to_le_bytes)
+                    .collect(),
+            ),
+            (
+                "u2",
+                [80_u16, 85]
+                    .into_iter()
+                    .flat_map(u16::to_le_bytes)
+                    .collect(),
+            ),
+            (
+                "i4",
+                [80_i32, 85]
+                    .into_iter()
+                    .flat_map(i32::to_le_bytes)
+                    .collect(),
+            ),
+            (
+                "u4",
+                [80_u32, 85]
+                    .into_iter()
+                    .flat_map(u32::to_le_bytes)
+                    .collect(),
+            ),
+            (
+                "i8",
+                [80_i64, 85]
+                    .into_iter()
+                    .flat_map(i64::to_le_bytes)
+                    .collect(),
+            ),
+            (
+                "u8",
+                [80_u64, 85]
+                    .into_iter()
+                    .flat_map(u64::to_le_bytes)
+                    .collect(),
+            ),
+        ];
+        let mut inputs = vec![json!([80, 85])];
+        for (dtype, raw) in encodings {
+            inputs.push(json!({"dtype": dtype, "bdata": base64::engine::general_purpose::STANDARD.encode(raw), "shape": "2"}));
+        }
+        for y in inputs {
+            let original = json!({"data": [{"type": "scatter", "x": [100, 1000], "y": y}]});
+            let first = apply_to_figure(&original, "key-a", "synthetic", "secret", 0.05);
+            let second = apply_to_figure(&original, "key-b", "synthetic", "secret", 0.05);
+            assert_ne!(first, second);
+            for result in [first, second] {
+                let ys = decode_array(&result["data"][0]["y"]).expect("numeric output");
+                for (actual, expected) in ys.iter().zip([80.0, 85.0]) {
+                    assert!((actual - expected).abs() > 0.0);
+                    assert!((actual - expected).abs() <= 0.05);
+                }
+                assert_eq!(result["data"][0]["x"], original["data"][0]["x"]);
+            }
+        }
+    }
 }

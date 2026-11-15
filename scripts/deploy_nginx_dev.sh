@@ -9,28 +9,38 @@ trap 'ssh -o BatchMode=yes -o ConnectTimeout=10 "$DEV_NGINX_HOST" "rm -rf -- $st
 
 scp -o BatchMode=yes -o ConnectTimeout=10 "$REPO_ROOT/conf/etc/nginx/sites-available/spinorama-dev" \
     "$REPO_ROOT/conf/etc/nginx/snippets/spinorama-dev-cache.conf" \
+    "$REPO_ROOT/conf/etc/nginx/snippets/bot-protection-server.conf" \
+    "$REPO_ROOT/conf/etc/nginx/snippets/deny-repository-metadata.conf" \
+    "$REPO_ROOT/conf/etc/nginx/conf.d/bot-protection.conf" \
     "$DEV_NGINX_HOST:$stage/"
 
 ssh -o BatchMode=yes -o ConnectTimeout=10 "$DEV_NGINX_HOST" sh -s -- "$stage" <<'REMOTE'
 set -eu
 stage=$1
-site=/etc/nginx/sites-available/spinorama-dev
-snippet=/etc/nginx/snippets/spinorama-dev-cache.conf
-sudo -n cp -a "$site" "$stage/site.backup"
-if sudo -n test -e "$snippet"; then
-    sudo -n cp -a "$snippet" "$stage/snippet.backup"
-fi
-restore() {
-    sudo -n cp -a "$stage/site.backup" "$site"
-    if [ -e "$stage/snippet.backup" ]; then
-        sudo -n cp -a "$stage/snippet.backup" "$snippet"
-    else
-        sudo -n rm -f "$snippet"
+configs="sites-available/spinorama-dev snippets/spinorama-dev-cache.conf snippets/bot-protection-server.conf snippets/deny-repository-metadata.conf conf.d/bot-protection.conf"
+for relative in $configs; do
+    destination=/etc/nginx/$relative
+    name=${relative##*/}
+    if sudo -n test -e "$destination"; then
+        sudo -n cp -a "$destination" "$stage/$name.backup"
     fi
+done
+restore() {
+    for relative in $configs; do
+        destination=/etc/nginx/$relative
+        name=${relative##*/}
+        if [ -e "$stage/$name.backup" ]; then
+            sudo -n cp -a "$stage/$name.backup" "$destination"
+        else
+            sudo -n rm -f "$destination"
+        fi
+    done
 }
 trap restore EXIT
-sudo -n install -m 644 "$stage/spinorama-dev-cache.conf" "$snippet"
-sudo -n install -m 644 "$stage/spinorama-dev" "$site"
+for relative in $configs; do
+    sudo -n install -m 644 "$stage/${relative##*/}" "/etc/nginx/$relative"
+done
+# The live ban list is deliberately preserved.
 sudo -n nginx -t
 sudo -n systemctl reload nginx
 trap - EXIT

@@ -5,58 +5,279 @@ Nginx serves ``dist/`` as a static tree. Numeric speaker/headphone
 data (graph JSON, trace bundles, frequency-response CSVs and their
 compressed forms) belongs in ``dist-private/`` and, once deployed,
 outside every nginx root. Catalogue/manifest JSON used by the
-browser itself is explicitly allowed.
+browser itself and owner-approved examples are explicitly allowed.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import pathlib
 import sys
 
-PRIVATE_TREES = ("speakers", "headphones")
-PRIVATE_SUFFIXES = (
-    ".csv",
-    ".json",
-    ".json.bz2",
-    ".json.gz",
-    ".json.zip",
+# Only named catalogue formats may contain numeric JSON. Compressed variants
+# are decoded and checked using the same schema, never trusted by directory.
+import bz2
+import gzip
+import json
+import re
+import zipfile
+import zlib
+
+POLICY = json.loads(
+    (pathlib.Path(__file__).resolve().parents[1] / "conf/public-data-policy.json").read_text()
 )
-ALLOWED_JSON = {
-    pathlib.PurePosixPath("manifest.json"),
-    pathlib.PurePosixPath("docs/search.json"),
+APPROVED_EXAMPLES = {
+    destination: POLICY["approved_source_blobs"][source]
+    for destination, source in POLICY["approved_website_examples"].items()
 }
-ALLOWED_JSON_PREFIX = pathlib.PurePosixPath("json")
+
+MAX_JSON_BYTES = 32 * 1024 * 1024
+CATALOGUE = re.compile(
+    r"json/(?:metadata(?:-head|-20[0-9]{2})?|headphone_metadata|eqdata|headphone_eqdata)\.json$"
+)
+RECORD_FIELDS = set(
+    [
+        "amount",
+        "brand",
+        "default_eq",
+        "default_measurement",
+        "measurements",
+        "model",
+        "nearest",
+        "price",
+        "shape",
+        "type",
+        "kind",
+        "score",
+        "score_eq",
+        "eqs",
+    ]
+)
+MEASUREMENT_FIELDS = set(
+    [
+        "computed_sensitivity",
+        "data_acquisition",
+        "estimates",
+        "estimates_eq",
+        "extras",
+        "format",
+        "notes",
+        "origin",
+        "parameters",
+        "pref_rating",
+        "pref_rating_eq",
+        "quality",
+        "review",
+        "review_published",
+        "reviews",
+        "scaled_pref_rating",
+        "scaled_pref_rating_eq",
+        "specifications",
+        "symmetry",
+        "recommendation",
+        "sensitivity_mV_94dB",
+    ]
+)
+PUBLIC_SUFFIXES = {
+    ".html",
+    ".css",
+    ".js",
+    ".mjs",
+    ".webp",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".svg",
+    ".ico",
+    ".woff",
+    ".woff2",
+    ".xml",
+    ".version",
+}
 
 
-def _is_private_data(relative: pathlib.PurePosixPath) -> bool:
-    lower = pathlib.PurePosixPath(*[part.lower() for part in relative.parts])
-    name = lower.name
-    if lower in ALLOWED_JSON or (
-        lower.parts and pathlib.PurePosixPath(lower.parts[0]) == ALLOWED_JSON_PREFIX
+def scalar_tree(value):
+    """Metadata contains scalar properties, never sampled numeric arrays."""
+    if isinstance(value, dict):
+        return all(
+            k not in {"x", "y", "z", "bdata", "dtype", "traces", "data"} and scalar_tree(v)
+            for k, v in value.items()
+        )
+    if isinstance(value, list):
+        return all(isinstance(v, str) for v in value)
+    return value is None or isinstance(value, (str, int, float, bool))
+
+
+def valid_catalogue(value, eq):
+    if not isinstance(value, dict):
+        return False
+    for record in value.values():
+        if not isinstance(record, dict) or not set(record) <= RECORD_FIELDS:
+            return False
+        if not isinstance(record.get("brand"), str) or not isinstance(record.get("model"), str):
+            return False
+        for key, data in record.items():
+            if key == "nearest":
+                if not isinstance(data, list) or not all(
+                    isinstance(pair, list)
+                    and len(pair) == 2
+                    and isinstance(pair[0], (int, float))
+                    and isinstance(pair[1], str)
+                    for pair in data
+                ):
+                    return False
+            elif key == "measurements":
+                if not isinstance(data, dict) or not all(
+                    isinstance(m, dict) and set(m) <= MEASUREMENT_FIELDS and scalar_tree(m)
+                    for m in data.values()
+                ):
+                    return False
+            elif key == "eqs":
+                if not eq or not isinstance(data, dict):
+                    return False
+                for settings in data.values():
+                    if not isinstance(settings, dict) or not set(settings) <= {
+                        "display_name",
+                        "filename",
+                        "peq",
+                        "preamp_gain",
+                        "type",
+                    }:
+                        return False
+                    for field, item in settings.items():
+                        if field == "peq":
+                            if not isinstance(item, list) or not all(
+                                isinstance(f, dict)
+                                and set(f) <= {"Q", "dbGain", "freq", "srate", "type"}
+                                and all(isinstance(v, (int, float)) for v in f.values())
+                                for f in item
+                            ):
+                                return False
+                        elif not scalar_tree(item):
+                            return False
+            elif not scalar_tree(data):
+                return False
+    return True
+
+
+def valid_json(path, relative):
+    name = relative.as_posix()
+    base = re.sub(r"\.(bz2|gz|zip)$", "", name)
+    if not (CATALOGUE.fullmatch(base) or base in {"manifest.json", "docs/search.json"}):
+        return False
+    try:
+        if name.endswith(".zip") or (name.endswith(".bz2") and zipfile.is_zipfile(path)):
+            with zipfile.ZipFile(path) as archive:
+                entries = archive.infolist()
+                if len(entries) != 1 or entries[0].filename not in {
+                    pathlib.PurePosixPath(base).name,
+                    base,
+                    "dist/" + base,
+                }:
+                    return False
+                with archive.open(entries[0]) as stream:
+                    raw = stream.read(MAX_JSON_BYTES + 1)
+        else:
+            opener = (
+                bz2.open if name.endswith(".bz2") else gzip.open if name.endswith(".gz") else open
+            )
+            with opener(path, "rb") as stream:
+                raw = stream.read(MAX_JSON_BYTES + 1)
+        if len(raw) > MAX_JSON_BYTES:
+            return False
+        value = json.loads(raw)
+        if CATALOGUE.fullmatch(base):
+            return valid_catalogue(value, "eqdata" in base)
+        if base == "docs/search.json":
+            return isinstance(value, list) and all(
+                isinstance(v, dict)
+                and set(v) <= {"objectID", "href", "title", "section", "text", "crumbs"}
+                and all(
+                    isinstance(t, str)
+                    if k != "crumbs"
+                    else isinstance(t, list) and all(isinstance(c, str) for c in t)
+                    for k, t in v.items()
+                )
+                for v in value
+            )
+        return (
+            isinstance(value, dict)
+            and set(value)
+            <= {
+                "manifest_version",
+                "name",
+                "short_name",
+                "description",
+                "version",
+                "start_url",
+                "display",
+                "theme_color",
+                "background_color",
+                "icons",
+                "scope",
+                "orientation",
+            }
+            and all(scalar_tree(v) for k, v in value.items() if k != "icons")
+            and all(
+                isinstance(icon, dict)
+                and set(icon) <= {"src", "sizes", "type", "purpose"}
+                and all(isinstance(v, str) for v in icon.values())
+                for icon in value.get("icons", [])
+            )
+        )
+    except (
+        OSError,
+        ValueError,
+        TypeError,
+        RuntimeError,
+        NotImplementedError,
+        EOFError,
+        zipfile.BadZipFile,
+        zlib.error,
     ):
         return False
-    if lower.parts and lower.parts[0] in PRIVATE_TREES:
-        if "traces" in lower.parts:
-            return True
-        return name.endswith(PRIVATE_SUFFIXES)
-    # No other machine-readable measurement payloads are expected in
-    # the browser bundle; fail closed on JSON/CSV outside the allowlist.
-    return name.endswith(PRIVATE_SUFFIXES)
+
+
+def matches_approved_blob(path, expected):
+    # Git object IDs identify the exact public examples approved by the owner.
+    digest = hashlib.sha1(usedforsecurity=False)
+    digest.update(f"blob {path.stat().st_size}\0".encode())
+    with path.open("rb") as stream:
+        while chunk := stream.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest() == expected
+
+
+def _is_private_data(relative, path):
+    if expected := APPROVED_EXAMPLES.get(relative.as_posix()):
+        return not matches_approved_blob(path, expected)
+    lower = pathlib.PurePosixPath(str(relative).lower())
+    if "traces" in lower.parts:
+        return True
+    if ".json" in lower.name:
+        return not valid_json(path, relative)
+    if lower.name == "robots.txt" and str(lower) in {"robots.txt", "docs/robots.txt"}:
+        return False
+    if lower.name == "measurement-license.txt":
+        # License text may be public; numeric response rows may not.
+        return bool(
+            re.search(r"(?m)^\s*[+-]?[0-9.]+[\s,;]+[+-]?[0-9.]+", path.read_text(errors="replace"))
+        )
+    return lower.suffix not in PUBLIC_SUFFIXES
 
 
 def find_private_data(root: pathlib.Path) -> list[pathlib.Path]:
     """Return private measurement files found below a public root."""
     found: list[pathlib.Path] = []
-    resolved_root = root.resolve()
     for path in root.rglob("*"):
-        if path.is_symlink() and not path.resolve().is_relative_to(resolved_root):
+        if path.is_symlink():
             found.append(path)
             continue
         if path.is_dir() and not path.is_symlink():
             continue
         relative = pathlib.PurePosixPath(path.relative_to(root).as_posix())
-        if _is_private_data(relative):
+        if _is_private_data(relative, path):
             found.append(path)
     return sorted(found)
 

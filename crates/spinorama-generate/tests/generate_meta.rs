@@ -1,14 +1,13 @@
 //! Tests for the `generate-meta` assembly helpers.
 
 use std::io::Write;
-use std::path::PathBuf;
 
 use spinorama_generate::generate_meta::{
     compute_near, derived_quality, dump_metadata, interpolate, near_freq_grid, parse_rew_eq,
     preamp_gain, round1, scaled_flatness, scaled_lfx_hz, scaled_pref_score, scaled_sm_pir,
     sensitivity_at_1m,
 };
-use spinorama_generate::metadata::load_metadata_dir;
+use spinorama_generate::metadata::SpeakerMeta;
 
 #[test]
 fn scaled_buckets_match_python() {
@@ -117,12 +116,17 @@ fn interpolate_and_near() {
 
 #[test]
 fn derived_quality_rules() {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../datas/measurements");
-    let speakers = load_metadata_dir(&root).expect("catalogue loads");
-    let kef = &speakers["KEF R3"];
-    assert_eq!(derived_quality(kef, "asr"), "high");
-    // Vendor webplotdigitizer from a non-Harman brand stays unknown.
-    assert_eq!(derived_quality(kef, "vendor"), "unknown");
+    let speaker: SpeakerMeta = serde_json::from_value(serde_json::json!({
+        "name": "Synthetic Speaker", "brand": "Synthetic", "model": "Speaker",
+        "type": "passive", "price": "100", "shape": "bookshelves",
+        "default_measurement": "asr", "measurements": {
+            "asr": {"origin": "ASR", "format": "klippel"},
+            "vendor": {"origin": "Vendors-Synthetic", "format": "webplotdigitizer"}
+        }
+    }))
+    .expect("synthetic metadata");
+    assert_eq!(derived_quality(&speaker, "asr"), "high");
+    assert_eq!(derived_quality(&speaker, "vendor"), "unknown");
 }
 
 #[test]

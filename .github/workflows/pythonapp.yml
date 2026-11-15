@@ -28,7 +28,7 @@ jobs:
         python -m venv .venv
         source .venv/bin/activate
         python -m pip install --upgrade pip
-        python -m pip install -r requirements.txt
+        python -m pip install -e '.[dev,browser]'
     - name: Build native generators and test metadata
       run: |
         cargo build --locked --release -p spinorama-generate --bins

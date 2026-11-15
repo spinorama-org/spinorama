@@ -172,6 +172,24 @@ else
     elapsed_status "OK after generate meta!"
 fi
 
+# compute headphone EQs (Rust optimizer; no external autoeq binary
+# needed. Batch mode skips headphones whose EQ already exists unless
+# --force is given, like the former shell script.)
+if [ -x "$GENERATE_PEQ_HEADPHONE" ]; then
+    # shellcheck disable=SC2086
+    "$GENERATE_PEQ_HEADPHONE" --batch $FORCE_FLAG
+    status=$?
+    if [ $status -ne 0 ]; then
+        elapsed_status "KO after headphone EQ computation!"
+        exit 1
+    else
+        elapsed_status "OK after headphone EQ computation!"
+    fi
+else
+    elapsed_status "KO missing required executable: $GENERATE_PEQ_HEADPHONE"
+    exit 1
+fi
+
 # headphone metadata (Rust: parses the Python catalogue in datas/,
 # no measurement cache needed)
 "$GENERATE_HEADPHONE_META" --datas-dir ./datas --output-dir dist/json
@@ -198,25 +216,10 @@ fi
 "$GENERATE_HEADPHONE_GRAPH" --headphones $FORCE_FLAG
 status=$?
 if [ $status -ne 0 ]; then
-    elapsed_status "WARN: headphone graph generation had failures (non-fatal)"
+    elapsed_status "KO after headphone graph generation!"
+    exit 1
 else
     elapsed_status "OK after headphone graph generation!"
-fi
-
-# compute headphone EQs (Rust optimizer; no external autoeq binary
-# needed. Batch mode skips headphones whose EQ already exists unless
-# --force is given, like the former shell script.)
-if [ -x "$GENERATE_PEQ_HEADPHONE" ]; then
-    # shellcheck disable=SC2086
-    "$GENERATE_PEQ_HEADPHONE" --batch $FORCE_FLAG
-    status=$?
-    if [ $status -ne 0 ]; then
-        elapsed_status "WARN: headphone EQ computation had failures (non-fatal)"
-    else
-        elapsed_status "OK after headphone EQ computation!"
-    fi
-else
-    elapsed_status "SKIP headphone EQ computation ($GENERATE_PEQ_HEADPHONE not built)"
 fi
 
 # generate eq filters: filters_* pictures are emitted by the Rust

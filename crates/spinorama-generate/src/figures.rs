@@ -715,11 +715,7 @@ pub fn common_figures(
         }
     };
     let mut figures = vec![
-        cea_figure(
-            "CEA2034",
-            title("CEA2034"),
-            cea,
-        ),
+        cea_figure("CEA2034", title("CEA2034"), cea),
         cea_figure(
             "CEA2034 Normalized",
             title("CEA2034 Normalized"),

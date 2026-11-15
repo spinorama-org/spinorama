@@ -47,40 +47,47 @@ This library provides an easy way to view, compare or analyse speakers data. Thi
 | Python | 3.12 | |
 | Node.js / npm | LTS | |
 | git | any | |
-| Rust / cargo | stable | Native generators, metadata validation, and API |
+| C compiler / linker | platform default | Native Rust builds; MSVC Build Tools on Windows |
 
 ### Linux / macOS
 
 ```bash
-./scripts/setup.sh
+make install
+source env.sh
 ```
 
-This installs system packages (via `apt` on Linux or `brew` on macOS), creates a
-Python virtual environment, installs `requirements.txt`, downloads third-party
-assets, and builds the native Rust generators and API.
-Optional Python reference extensions for parity tests are installed separately
-with `make python-reference`.
+`make install` installs Python packages in `.venv`, Rust through rustup in the
+user's `~/.cargo` and `~/.rustup` directories, and JavaScript dependencies from
+the lockfile. It does not run a system package manager or change shell profiles.
+Existing `CARGO_HOME` and `RUSTUP_HOME` settings are respected. Install Python
+3.12, Node.js/npm, Git, and a C compiler/linker beforehand. Use
+`SPINORAMA_PYTHON=/path/to/python3.12 make install` to select Python explicitly.
 
-All Python dependencies, including editor, test, and documentation tools, are in
-`requirements.txt`. In subsequent Bash or Zsh sessions, run `source env.sh` to
-activate `.venv` and install missing dependencies.
+`make setup` (or `./scripts/setup.sh`) also prepares website assets and builds
+the native generators and API. Installation does not run lint checks.
+`source env.sh` activates the environment without downloading packages.
+
+`requirements.txt` contains the Python runtime and metadata editor dependencies.
+Use `make install-dev` for pytest, Ruff, rustfmt, and Clippy. Install optional
+Python reference extensions with `make python-reference`. Selenium browser tests
+need `python -m pip install -e '.[browser]'` in the activated environment.
+Notebook and language-server tools are not installed by default. The full
+Python reference test suite requires `make python-reference` before
+`make test-python`; the native Rust tests do not require these extensions.
 
 ### Windows (PowerShell)
 
 Install [Python 3.12](https://www.python.org/downloads/),
-[Node.js](https://nodejs.org/), [git](https://git-scm.com/), and Rust manually, then
+[Node.js](https://nodejs.org/), [git](https://git-scm.com/), and MSVC Build Tools, then
 run:
 
 ```powershell
 .\scripts\setup.ps1
 ```
 
-The script automatically sets the `PYTHONUTF8=1` environment variable (both for
-the current session and persistently for the user) so that Python reads files as
-UTF-8 by default.  This is required on Windows where the system locale is
-typically not UTF-8.  See
-[Python on Windows UTF-8 mode](https://docs.python.org/3/using/windows.html#win-utf8-mode)
-for details.
+The PowerShell script uses `.venv` and user-local rustup too. Pass `-InstallOnly`
+to skip asset generation and native compilation. It enables `PYTHONUTF8=1` in
+the current session so that Python reads files as UTF-8.
 
 If you prefer to set it yourself:
 

@@ -17,8 +17,8 @@
 # binaries require must be <= the prod glibc version.
 #
 # The crates form one cargo workspace (root Cargo.toml), so the whole
-# workspace skeleton (root manifest, lockfile, crates/) is synced to a
-# single remote build directory.
+# workspace skeleton (root manifest, lockfile, crates/) includes all
+# native dependencies and is synced to a single remote build directory.
 #
 # Binaries land in ~/spinorama-bin/ on the target and are smoke-tested
 # there. The GPUI renderer (spinorama-render-images) is not covered:
@@ -48,7 +48,13 @@ rsync -az --delete \
     "$REPO_ROOT/crates/" "$DEV_HOST:$REMOTE_BUILD/crates/"
 
 echo "==> Building workspace on $DEV_HOST (native x86_64-linux)"
-ssh "$DEV_HOST" "cd ~/$REMOTE_BUILD && cargo build --release 2>&1 | tail -3"
+# A pipeline ending in tail hides Cargo's exit status in a POSIX shell.
+ssh "$DEV_HOST" "cd ~/$REMOTE_BUILD && \
+    if cargo build --locked --release --workspace >deploy-build.log 2>&1; then \
+        tail -3 deploy-build.log; \
+    else \
+        status=\$?; cat deploy-build.log >&2; exit \$status; \
+    fi"
 
 install_and_smoke() {
     host=$1

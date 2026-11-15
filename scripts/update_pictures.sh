@@ -16,6 +16,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+set -eu
+
 OS=$(uname)
 ARCH=$(uname -a | awk '{print $NF}')
 
@@ -60,9 +62,18 @@ for d in "${sourcedir}/pictures"; do
         done
     done
 done
-# copy logs
+# Copy only browser image assets. Notebooks and archives must not enter dist.
 for icon in datas/icons/*; do
     target="dist/pictures/$(basename "$icon")"
+    case "$icon" in
+        *.png|*.jpg|*.jpeg|*.webp|*.svg|*.ico) ;;
+        *)
+            # Remove copies left by older runs of this script.
+            rm -f -- "$target"
+            continue
+            ;;
+    esac
+    [ -f "$icon" ] || continue
     if test ! -f "$target" || ! cmp -s "$icon" "$target"; then
         cp -p "$icon" "$target"
     fi
